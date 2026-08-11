@@ -79,6 +79,24 @@ class SymjaEngineTest {
     }
 
     @Test
+    void inexactResultsKeepFullPrecision() throws Exception {
+        // Symja's Num.toString() is a display form of about six significant figures. Reading the value
+        // from it truncated every inexact result in the application, and 1.41421 looks entirely
+        // plausible — which is what made it worth pinning.
+        assertEquals("1.4142135623730951", eval("N(sqrt(2))"));
+        assertTrue(eval("N(pi)").startsWith("3.14159265358979"), eval("N(pi)"));
+    }
+
+    @Test
+    void arbitraryPrecisionSurvivesToo() throws Exception {
+        // The opposite case: here the printed form is the only place the extra digits exist, and
+        // taking the double would throw them away.
+        String pi = eval("N(pi, 40)");
+        assertTrue(pi.startsWith("3.14159265358979323846264338327950288419"), pi);
+        assertTrue(pi.length() > 30, "expected ~40 digits, got " + pi);
+    }
+
+    @Test
     void inexactInputStaysInexact() throws Exception {
         assertEquals("0.5", eval("1.0/2"));
     }

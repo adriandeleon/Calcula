@@ -155,7 +155,20 @@ public final class CasEngineLoader {
         }
     }
 
-    /** Delegates everything and, on close, releases the loader's jar handles (they lock files on Windows). */
+    /**
+     * Delegates everything, and deliberately does NOT close the class loader.
+     *
+     * <p>Closing it looks like good hygiene and is a trap here. Symja starts background threads of its
+     * own — an initialiser that preloads the several hundred Rubi integration rule classes — and they
+     * outlive any single call. Pulling the loader out from under one turns a completed calculation into
+     * {@code NoClassDefFoundError: …/rubi/IntRules96} from a thread the application never started and
+     * cannot join. Observed exactly that.
+     *
+     * <p>The cost is one loader retained per engine, which is one per window, released when the process
+     * exits. The usual argument for closing — jar files stay locked on Windows — matters when jars are
+     * replaced beneath a running app, which is not a workflow here. A crash in return for tidiness is a
+     * bad trade.
+     */
     private record ManagedEngine(CasEngine delegate, URLClassLoader loader) implements CasEngine {
 
         @Override
@@ -186,7 +199,6 @@ public final class CasEngineLoader {
         @Override
         public void close() {
             delegate.close();
-            closeQuietly(loader);
         }
     }
 

@@ -160,14 +160,37 @@ final class ExprAdapter {
         return printed.isBlank() ? s.getSymbolName() : printed;
     }
 
+    /** Digits a double can carry. Beyond this, the printed form is the only place the value exists. */
+    private static final int DOUBLE_DIGITS = 17;
+
+    /**
+     * An inexact number, at full precision.
+     *
+     * <p>Neither source alone is correct, which is why this is not a one-liner. For a machine {@code
+     * Num}, {@code toString()} prints a DISPLAY form of about six significant figures — reading the
+     * value from it silently truncated every inexact result in the application, so {@code N(Sqrt(2))}
+     * came back as 1.41421 rather than 1.4142135623730951. For an {@code ApfloatNum}, the opposite
+     * holds: it genuinely carries more than a double, and {@code evalf()} throws that away.
+     *
+     * <p>So the printed form wins only when it carries more than a double could — which is exactly the
+     * arbitrary-precision case — and the double wins otherwise. Testing the precision rather than the
+     * concrete class keeps this off Symja's internal type names.
+     */
     private Expr real(IExpr e) {
+        BigDecimal printed = null;
         try {
-            return Exprs.of(new BigDecimal(e.toString()));
-        } catch (NumberFormatException ex) {
+            printed = new BigDecimal(e.toString());
+        } catch (NumberFormatException ignored) {
             // Symja can print in Mathematica's `1.0*^-5` notation, which BigDecimal will not read.
-            // Falling back to the double keeps the value rather than failing the whole conversion.
-            return Exprs.of(e.evalf());
         }
+        if (printed != null && printed.precision() > DOUBLE_DIGITS) {
+            return Exprs.of(printed);
+        }
+        double value = e.evalf();
+        if (Double.isFinite(value)) {
+            return Exprs.of(BigDecimal.valueOf(value));
+        }
+        return printed != null ? Exprs.of(printed) : engineValue(e);
     }
 
     private Expr engineValue(IExpr e) {
