@@ -98,3 +98,23 @@
     -fx-background-color: transparent;
     -fx-border-width: 0;
 }
+
+/* ---- rendered mathematics ---------------------------------------------- */
+
+.math-text {
+    -fx-fill: -color-fg-default;
+}
+
+/* Fraction bars. A filled rectangle rather than a stroked line: a hairline stroke rounds
+   inconsistently across scale factors, a filled rect does not. */
+.math-rule {
+    -fx-fill: -color-fg-default;
+}
+
+/* Radicals and grown delimiters, which are drawn rather than set from a glyph. */
+.math-path {
+    -fx-stroke: -color-fg-default;
+    -fx-fill: null;
+    -fx-stroke-line-cap: round;
+    -fx-stroke-line-join: round;
+}

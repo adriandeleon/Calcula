@@ -97,7 +97,7 @@ class ReaderTest {
         // form rather than the simplified one: sin(pi) is 0 only if something knows trigonometry.
         // What is being tested here is that the word became an application of the right arity.
         assertEquals(List.of("sin(pi)"), run(new RpnReader(), "pi sin"));
-        assertEquals(List.of("deriv(x^2, x)"), run(new RpnReader(), "x^2 x d"));
+        assertEquals(List.of("deriv(x^2, x)"), run(new RpnReader(), "x^2 x deriv"));
     }
 
     @Test

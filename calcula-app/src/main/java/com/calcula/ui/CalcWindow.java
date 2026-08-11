@@ -41,6 +41,8 @@ import com.calcula.machine.MachineException;
 import com.calcula.machine.Op;
 import com.calcula.machine.TrailEntry;
 import com.calcula.parse.Formatter;
+import com.calcula.ui.math.MathLayout;
+import com.calcula.ui.math.MathStyle;
 
 /**
  * The main window: trail on the left, stack in the centre, mode line and echo area along the bottom.
@@ -63,6 +65,9 @@ import com.calcula.parse.Formatter;
  * decided; algebraic is the provisional start because it is the gentler of the two to meet first.
  */
 public final class CalcWindow {
+
+    /** Point size for rendered stack entries. */
+    private static final double STACK_MATH_SIZE = 17;
 
     private final BorderPane root = new BorderPane();
     private final ObservableList<Expr> stack = FXCollections.observableArrayList();
@@ -336,11 +341,13 @@ public final class CalcWindow {
                 index.setMinWidth(38);
                 index.setAlignment(Pos.CENTER_RIGHT);
 
-                Label content = new Label(Formatter.format(value));
+                Region content = MathLayout.render(value, MathStyle.of(STACK_MATH_SIZE));
                 content.getStyleClass().add("stack-value");
 
                 HBox row = new HBox(10, index, content);
-                row.setAlignment(Pos.CENTER_LEFT);
+                // Baseline, not centre: the entry number should sit on the formula's own baseline,
+                // which for a fraction is nowhere near its middle.
+                row.setAlignment(Pos.BASELINE_LEFT);
                 setGraphic(row);
                 setText(null);
             }

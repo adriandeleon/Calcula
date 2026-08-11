@@ -82,8 +82,9 @@ public final class Names {
         map("arg", "Arg");
 
         // Algebra — the whole reason the engine is here
+        // NOT aliased to `d`: a single letter d is a variable far more often than it is a
+        // derivative, and claiming it renders `c - d` as `c − deriv`.
         map("deriv", "D");
-        alias("d", "D");
         map("integrate", "Integrate");
         map("solve", "Solve");
         map("simplify", "Simplify");

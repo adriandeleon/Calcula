@@ -19,13 +19,13 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  * <p>Mirrors whatever {@code App.start} sets up before it builds a window; if the two drift, the scene
  * under test stops being the scene the app really has.
  */
-final class FxTestSupport {
+public final class FxTestSupport {
 
     private static volatile boolean booted;
 
     private FxTestSupport() {}
 
-    static synchronized void bootToolkit() throws Exception {
+    public static synchronized void bootToolkit() throws Exception {
         if (booted) {
             return;
         }
@@ -41,7 +41,7 @@ final class FxTestSupport {
     }
 
     /** Run {@code task} on the FX thread and block until it finishes, rethrowing any failure. */
-    static void runOnFx(Runnable task) throws Exception {
+    public static void runOnFx(Runnable task) throws Exception {
         if (Platform.isFxApplicationThread()) {
             task.run();
             return;
@@ -66,7 +66,7 @@ final class FxTestSupport {
     }
 
     /** Compute a value on the FX thread and return it (blocking). */
-    static <T> T callOnFx(Callable<T> task) throws Exception {
+    public static <T> T callOnFx(Callable<T> task) throws Exception {
         var result = new AtomicReference<T>();
         runOnFx(() -> {
             try {
@@ -87,7 +87,7 @@ final class FxTestSupport {
      * null. The graph looks right in the debugger and is empty to a selector, which is a confusing
      * afternoon if you meet it without knowing.
      */
-    static Region realize(Region root) throws Exception {
+    public static Region realize(Region root) throws Exception {
         runOnFx(() -> {
             new Scene(root, 980, 660);
             root.applyCss();
@@ -97,7 +97,7 @@ final class FxTestSupport {
     }
 
     /** Pump the FX event queue until {@code condition} holds, or fail after {@code timeoutMs}. */
-    static void waitFor(String what, long timeoutMs, Callable<Boolean> condition) throws Exception {
+    public static void waitFor(String what, long timeoutMs, Callable<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + timeoutMs * 1_000_000L;
         while (System.nanoTime() < deadline) {
             if (Boolean.TRUE.equals(callOnFx(condition))) {

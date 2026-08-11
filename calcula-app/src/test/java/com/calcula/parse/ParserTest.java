@@ -101,8 +101,17 @@ class ParserTest {
     }
 
     @Test
+    void aSingleLetterDIsAVariableNotTheDerivative() {
+        // Claiming `d` renders `c - d` as `c − deriv`, which is the same mistake as claiming `e`
+        // or `i`. The derivative is spelled out.
+        assertEquals(Exprs.sym("d"), p("d"));
+        assertEquals(Exprs.call("D", Exprs.sym("f"), Exprs.sym("x")), p("deriv(f, x)"));
+    }
+
+    @Test
     void functionsTakeSeveralArguments() {
-        assertEquals(Exprs.call("D", Exprs.call("Power", Exprs.sym("x"), Exprs.of(2)), Exprs.sym("x")), p("d(x^2, x)"));
+        assertEquals(
+                Exprs.call("D", Exprs.call("Power", Exprs.sym("x"), Exprs.of(2)), Exprs.sym("x")), p("deriv(x^2, x)"));
         assertEquals(Exprs.call("Max", Exprs.of(1), Exprs.of(2), Exprs.of(3)), p("max(1,2,3)"));
     }
 

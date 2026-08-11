@@ -67,6 +67,7 @@ Foundation complete and green (154 tests). The layers, innermost first:
 | `command` / `key` | Registry and prefix-chord dispatcher, both toolkit-free |
 | `cas` + `calcula-cas-symja` | The engine seam and its Symja implementation |
 | `ui` | Window, chord translation |
+| `ui.math` | Expr → JavaFX nodes: real two-dimensional typeset mathematics |
 
 Everything below `ui` is toolkit-free and unit-tested.
 
@@ -80,6 +81,16 @@ solve(x^2 = 4, x)            -> [[x -> -2], [x -> 2]]
 x^2 x deriv 3 *              -> 6*x               # the same thing in RPN
 ```
 
+### Rendering
+
+Stack entries are set as mathematics, not printed as text: built-up fractions, radicals,
+raised scripts, brackets that grow with their content. `mvn test -Dtest=RenderSampleFxTest`
+writes `calcula-app/target/math-sample.png` to look at.
+
+Every node carries its own subexpression, so `MathLayout.exprAt(node)` resolves a click to
+the exact subterm under it — which is what selection mode will be built on, and the one
+thing a rasterised formula could never support.
+
 ### Still open
 
 **Which input model is the default.** Deliberately undecided. Both readers work,
@@ -88,11 +99,7 @@ x^2 x deriv 3 *              -> 6*x               # the same thing in RPN
 
 ### Not built yet, in intended order
 
-1. Native math layout: one JavaFX `Node` per subexpression, so selection mode (`j`)
-   can hit-test a subterm. Needs TeX's rules to look right — math italic vs upright,
-   the 100/70/50 script cascade, spacing by operator class. Stretchy delimiters as
-   `Path`, since JavaFX cannot read OpenType MATH.
-2. Plotting: render Symja's returned `Graphics` primitives on a `Canvas`; compile
+1. Plotting: render Symja's returned `Graphics` primitives on a `Canvas`; compile
    `Expr` → `DoubleUnaryOperator` for interactive pan/zoom (CAS eval is 0.38 ms/point,
    far too slow for a frame).
 3. Multi-flavour clipboard: MathML + LaTeX + PNG on one copy.

@@ -32,6 +32,13 @@
             <version>${atlantafx.version}</version>
         </dependency>
 
+        <!-- test only: SwingFXUtils, for writing a snapshot PNG to look at. -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-swing</artifactId>
+            <version>${javafx.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

@@ -127,7 +127,7 @@ class FormatterTest {
                 "-x^2",
                 "2^-3",
                 "sin(x) + cos(y)",
-                "d(x^2, x)",
+                "deriv(x^2, x)",
                 "[1, 2, [3, 4]]",
                 "x = 1",
                 "x <= 1",

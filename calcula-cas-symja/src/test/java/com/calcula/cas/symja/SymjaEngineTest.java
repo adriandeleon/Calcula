@@ -45,7 +45,7 @@ class SymjaEngineTest {
 
     @Test
     void symbolicCalculusRoundTripsThroughOurNotation() throws Exception {
-        assertEquals("2*x", eval("d(x^2, x)"));
+        assertEquals("2*x", eval("deriv(x^2, x)"));
         assertEquals("-x*cos(x) + sin(x)", eval("integrate(x*sin(x), x)"));
         assertEquals("1", eval("limit(sin(x)/x, x -> 0)"));
     }
@@ -125,7 +125,7 @@ class SymjaEngineTest {
     void applyEncodingSurvivesAHeadThatIsItselfAnExpression() throws Exception {
         // Derivative[1][f] has an expression for a head, which a String-headed Call cannot hold
         // directly; $Apply carries it as the first argument.
-        Expr derivative = engine.eval(Parser.parse("d(f(x), x)"));
+        Expr derivative = engine.eval(Parser.parse("deriv(f(x), x)"));
         String again = Formatter.format(engine.eval(derivative));
         assertEquals(Formatter.format(derivative), again, "a re-evaluated derivative must be stable");
     }
