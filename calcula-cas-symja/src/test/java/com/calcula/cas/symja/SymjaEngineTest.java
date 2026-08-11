@@ -3,6 +3,10 @@ package com.calcula.cas.symja;
 import com.calcula.cas.CasEngine;
 import com.calcula.cas.CasException;
 import com.calcula.expr.Expr;
+import com.calcula.machine.Evaluator;
+import com.calcula.machine.Machine;
+import com.calcula.machine.Modes;
+import com.calcula.machine.Op;
 import com.calcula.parse.Formatter;
 import com.calcula.parse.Parser;
 import org.junit.jupiter.api.BeforeAll;
@@ -110,6 +114,44 @@ class SymjaEngineTest {
         String mathml = engine.mathmlForm(Parser.parse("(x+1)/(x^2-3)"));
         assertTrue(mathml.contains("<mfrac>"), mathml);
         assertTrue(mathml.contains("<msup>"), mathml);
+    }
+
+    @Test
+    void degreeModeStaysExactBecauseTheFactorIsAFractionOfPi() throws Exception {
+        // What AngleConversion produces for sin(30) and arcsin(1/2) in degree mode, checked against the
+        // real engine. This is the claim the whole approach rests on: multiplying by a rounded
+        // 0.017453292519943295 instead answers 0.49999999999999994 and turns an exact calculator into
+        // an approximate one — while still looking right to three decimal places on screen.
+        assertEquals("1/2", eval("sin(30*pi/180)"));
+        assertEquals("30", eval("arcsin(1/2)/(pi/180)"));
+        assertEquals("1", eval("tan(45*pi/180)"));
+    }
+
+    @Test
+    void theModesDriveTheRealEngineFromEndToEnd() {
+        // The join: a mode set on the machine, converted by AngleConversion, answered by Symja. Both
+        // halves are tested separately against stubs, and neither can show that they compose.
+        Machine m = new Machine(Evaluator.numericThen((input, modes) -> {
+            try {
+                return engine.eval(input);
+            } catch (CasException e) {
+                throw new IllegalStateException(e);
+            }
+        }));
+
+        m.apply(new Op.SetModes(Modes.DEFAULTS.withAngle(Modes.Angle.DEGREES)));
+        m.apply(new Op.Push(Parser.parse("sin(30)")));
+        assertEquals("1/2", Formatter.format(m.state().at(1)), "degrees, and still exact");
+
+        // Fraction mode off turns that same answer into a decimal, without a second evaluation.
+        m.apply(new Op.SetModes(m.modes().withFractions(false)));
+        m.apply(new Op.Push(Parser.parse("sin(30)")));
+        assertEquals("0.5", Formatter.format(m.state().at(1)));
+
+        // And back to radians, where sin(30) is nothing memorable at all.
+        m.apply(new Op.SetModes(m.modes().withAngle(Modes.Angle.RADIANS).withFractions(true)));
+        m.apply(new Op.Push(Parser.parse("sin(30)")));
+        assertEquals("sin(30)", Formatter.format(m.state().at(1)));
     }
 
     @Test

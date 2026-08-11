@@ -130,7 +130,7 @@ class MachineTest {
 
     @Test
     void anEngineFailureIsReportedAsAMachineErrorRatherThanEscaping() {
-        Machine m = new Machine(input -> {
+        Machine m = new Machine((input, modes) -> {
             throw new IllegalStateException("engine exploded");
         });
         MachineException e = assertThrows(MachineException.class, () -> m.apply(push("1")));
@@ -234,7 +234,7 @@ class MachineTest {
         // (1+1)^(1/2) folds its argument to 2^(1/2) — a change — but is not an answer. An evaluator
         // chain that stops as soon as anything changed would never ask the engine for Sqrt(2).
         Expr[] seen = new Expr[1];
-        Evaluator chained = Evaluator.numericThen(input -> {
+        Evaluator chained = Evaluator.numericThen((input, modes) -> {
             seen[0] = input;
             return Exprs.call("Sqrt", Exprs.of(2));
         });
@@ -247,7 +247,7 @@ class MachineTest {
 
     @Test
     void aFullyNumericResultNeverReachesTheEngine() {
-        Machine m = new Machine(Evaluator.numericThen(input -> {
+        Machine m = new Machine(Evaluator.numericThen((input, modes) -> {
             throw new AssertionError("the engine should not have been consulted for " + Formatter.format(input));
         }));
         m.applyAll(List.of(push("2"), push("3"), new Op.Apply("Plus", 2)));

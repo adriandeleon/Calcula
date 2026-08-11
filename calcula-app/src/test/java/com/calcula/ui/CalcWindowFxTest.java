@@ -258,4 +258,154 @@ class CalcWindowFxTest {
         FxTestSupport.waitFor("the exact sum", 5000, () -> window.stackDisplay().equals(List.of("5/6")));
         FxTestSupport.runOnFx(window::dispose);
     }
+
+    // ------------------------------------------------------------------ modes
+
+    @Test
+    void aModeCommandChangesTheModeLine() throws Exception {
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+        assertTrue(window.modeLine().startsWith("rad"), window.modeLine());
+
+        FxTestSupport.runOnFx(() -> window.run("mode.degrees"));
+        FxTestSupport.waitFor(
+                "the mode line to follow", 5000, () -> window.modeLine().startsWith("deg"));
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void everyModeCommandIsReachableFromTheKeyboard() throws Exception {
+        // A command nothing is bound to is a command nobody finds, in an application with no menus.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        for (String key : List.of("r", "d", "g", "p", "s", "f")) {
+            assertEquals(
+                    KeyDispatcher.Outcome.PENDING,
+                    FxTestSupport.callOnFx(() -> window.press("M-m")).outcome(),
+                    "M-m should hold as a prefix");
+            assertEquals(
+                    KeyDispatcher.Outcome.RAN,
+                    FxTestSupport.callOnFx(() -> window.press(key)).outcome(),
+                    "M-m " + key + " should run something");
+        }
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void precisionIsReadFromTheInputLineAndClearsIt() throws Exception {
+        // The input line is this application's minibuffer, so "type 20, press the key" is the gesture
+        // Calc uses for a numeric prefix — and it needs no dialog.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+
+        FxTestSupport.runOnFx(() -> {
+            window.type("20");
+            window.run("mode.precision");
+        });
+        FxTestSupport.waitFor("the new precision", 5000, () -> window.modeLine().contains("prec 20"));
+        assertEquals("", window.typed(), "the digits should not be left behind to be evaluated");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void anUnusablePrecisionSaysSoAndChangesNothing() throws Exception {
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+
+        FxTestSupport.runOnFx(() -> {
+            window.type("banana");
+            window.run("mode.precision");
+        });
+        FxTestSupport.waitFor(
+                "an explanation",
+                5000,
+                () -> window.trailContents().stream().anyMatch(line -> line.contains("number of digits")));
+        assertTrue(window.modeLine().contains("prec 12"), window.modeLine());
+        assertEquals("banana", window.typed(), "a rejected command must not eat the input line");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void aModeChangeUndoesLikeAnyOtherOperation() throws Exception {
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+
+        FxTestSupport.runOnFx(() -> window.run("mode.degrees"));
+        FxTestSupport.waitFor("degrees", 5000, () -> window.modeLine().startsWith("deg"));
+
+        FxTestSupport.runOnFx(() -> window.run("edit.undo"));
+        FxTestSupport.waitFor("radians again", 5000, () -> window.modeLine().startsWith("rad"));
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    /** A real key press at the input field, so the whole path — Chords, onKey, dispatcher — is exercised. */
+    private static void fire(CalcWindow window, javafx.scene.input.KeyCode code, boolean alt) throws Exception {
+        TextField input =
+                (TextField) FxTestSupport.callOnFx(() -> window.getRoot().lookup(".echo-input"));
+        FxTestSupport.runOnFx(() -> javafx.event.Event.fireEvent(
+                input,
+                new javafx.scene.input.KeyEvent(
+                        javafx.scene.input.KeyEvent.KEY_PRESSED, "", "", code, false, false, alt, false)));
+    }
+
+    @Test
+    void theSecondKeyOfATwoKeySequenceArrivesInsteadOfBeingTyped() throws Exception {
+        // The rule that an unmodified letter is not a chord is what lets the echo area be typed into,
+        // and it silently made every two-key binding unreachable: the letter went into the text field
+        // and the prefix hung. Driving press("M-m") directly cannot see this — only a real event can.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+
+        fire(window, javafx.scene.input.KeyCode.M, true); // M-m, the mode prefix
+        fire(window, javafx.scene.input.KeyCode.D, false); // a bare d completes it
+
+        FxTestSupport.waitFor("degrees", 5000, () -> window.modeLine().startsWith("deg"));
+        assertEquals("", window.typed(), "the second key must not also type a character");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void aBareLetterStillTypesWhenNoPrefixIsHeld() throws Exception {
+        // The other direction of the same rule: with nothing pending, letters belong to the field.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+
+        TextField input =
+                (TextField) FxTestSupport.callOnFx(() -> window.getRoot().lookup(".echo-input"));
+        fire(window, javafx.scene.input.KeyCode.D, false);
+        assertTrue(
+                FxTestSupport.callOnFx(() -> !input.isDisabled()),
+                "a plain letter must reach the field rather than being swallowed");
+        assertTrue(window.modeLine().startsWith("rad"), "and must not have run the mode command");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void anUnboundSecondKeyAbandonsTheSequenceWithoutTypingIt() throws Exception {
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+
+        fire(window, javafx.scene.input.KeyCode.M, true); // M-m
+        fire(window, javafx.scene.input.KeyCode.Q, false); // nothing is bound to M-m q
+
+        assertEquals("", window.typed(), "a rejected sequence should not leave its keys in the input line");
+        assertTrue(window.modeLine().startsWith("rad"));
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void degreeModeReachesTheEngineAsAnExactFactor() throws Exception {
+        // End to end: the mode is set through a command, and what the engine is handed is the rewritten
+        // expression — the join between AngleConversion and the mode line, which neither unit test sees.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+        window.setEngine(new StubEngine("stub", "1.0"));
+
+        FxTestSupport.runOnFx(() -> window.run("mode.degrees"));
+        FxTestSupport.waitFor("degrees", 5000, () -> window.modeLine().startsWith("deg"));
+
+        FxTestSupport.runOnFx(() -> window.submit("sin(30)"));
+        FxTestSupport.waitFor(
+                "the converted expression", 5000, () -> window.stackDisplay().equals(List.of("sin(30*pi/180)")));
+        FxTestSupport.runOnFx(window::dispose);
+    }
 }

@@ -1,5 +1,7 @@
 package com.calcula.machine;
 
+import java.math.MathContext;
+
 /**
  * The mode line, as data. Every field here is something Calc shows across the bottom of the window and
  * lets you flip with a two-key command.
@@ -59,6 +61,11 @@ public record Modes(Angle angle, int precision, boolean symbolic, boolean fracti
 
     public Modes withFractions(boolean newFractions) {
         return new Modes(angle, precision, symbolic, newFractions);
+    }
+
+    /** The rounding context inexact arithmetic works to. */
+    public MathContext mathContext() {
+        return new MathContext(precision);
     }
 
     /** The mode line text, e.g. {@code "rad  prec 12  symb  frac"}. */

@@ -191,6 +191,17 @@ public final class Arith {
         };
     }
 
+    /**
+     * A number as a decimal, rounded to {@code mc}.
+     *
+     * <p>Public because fraction mode needs it: switching exact fractions off turns every rational in
+     * an answer into a decimal, and that conversion has to round the same way the rest of the
+     * arithmetic does rather than inventing its own rule.
+     */
+    public static BigDecimal toDecimal(Num a, MathContext mc) {
+        return dec(a, mc);
+    }
+
     private static BigDecimal dec(Num a, MathContext mc) {
         return switch (a) {
             case Int i -> new BigDecimal(i.value());

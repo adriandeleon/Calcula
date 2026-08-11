@@ -50,6 +50,23 @@ class ChordsTest {
     }
 
     @Test
+    void aBareLetterBecomesAChordWhileAPrefixIsHeld() {
+        // Both halves of the rule. Without the second, the letter that completes C-x u or M-m r goes
+        // into the text field instead and the prefix hangs — a binding that silently does not exist.
+        assertNull(Chords.chordFor(plain(KeyCode.U), false));
+        assertEquals("u", Chords.chordFor(plain(KeyCode.U), true));
+        assertEquals("5", Chords.chordFor(plain(KeyCode.DIGIT5), true));
+    }
+
+    @Test
+    void continuingDoesNotChangeHowAModifiedOrNamedKeyReads() {
+        // A prefix followed by a real chord is ordinary: C-x C-s must not become something else.
+        assertEquals("C-s", Chords.chordFor(key(KeyCode.S, true, false, false, false), true));
+        assertEquals("RET", Chords.chordFor(plain(KeyCode.ENTER), true));
+        assertNull(Chords.chordFor(plain(KeyCode.CONTROL), true), "a modifier alone is still not a chord");
+    }
+
+    @Test
     void modifierKeysPressedAloneAreNotChords() {
         // Holding Control is the start of a chord, not one.
         assertNull(Chords.chordFor(plain(KeyCode.CONTROL)));

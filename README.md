@@ -153,6 +153,26 @@ Both writers emit from the tree rather than through the engine. `TeXForm` produc
 than an `<mtable>` and prepends a DOCTYPE that has to be stripped. Writing them here also
 means copying works with no engine loaded.
 
+### Modes
+
+The mode line is not decoration — each entry is tested for the thing it claims to do,
+because a mode that displays and changes nothing is a wrong answer the user has been told
+to expect. `M-m` is the prefix: `r`/`d`/`g` for the angle unit, `p` for precision, `s` for
+symbolic, `f` for fractions. Each is an operation on the machine, so a mode change lands in
+the undo history beside the answers it changed.
+
+Degree mode is a rewrite of the expression rather than a flag passed to the engine — every
+CAS works in radians. `sin(x)` becomes `sin(x · π/180)`, and `arcsin(x)`, which returns an
+angle rather than taking one, becomes `arcsin(x) / (π/180)`. The factor is carried as an
+exact quotient and never as 0.017453…, which is the whole point: **`sin(30)` in degrees
+answers `1/2`**, where multiplying by a rounded constant gives 0.49999999999999994 — and
+would still look right to three decimal places on screen. Hyperbolic functions are
+deliberately excluded; `sinh(2)` takes a real number, not an angle.
+
+Precision is read from the input line: type `20`, then `M-m p`. The input line is this
+application's minibuffer, so that is the gesture Calc uses for a numeric prefix, and it
+needs no dialog.
+
 ### Still open
 
 **Which input model is the default.** Deliberately undecided. Both readers work,
@@ -161,14 +181,11 @@ means copying works with no engine loaded.
 
 ### Not built yet, in intended order
 
-1. Plotting: render Symja's returned `Graphics` primitives on a `Canvas`; compile
-   `Expr` → `DoubleUnaryOperator` for interactive pan/zoom (CAS eval is 0.38 ms/point,
-   far too slow for a frame).
-3. Multi-flavour clipboard: MathML + LaTeX + PNG on one copy.
-4. Modes actually wired to commands (angle, precision) — the model exists, the
-   commands do not.
-5. Packaging (`-Pdist`): moditect for the app's own few automatic modules, jpackage,
+1. Packaging (`-Pdist`): moditect for the app's own few automatic modules, jpackage,
    AOT training, and staging `cas/*.jar` into the app image beside the launcher.
+2. Smaller things deferred along the way: a shaded plot area labelled with the
+   closed-form integral, a tangent line at the cursor, and — still open — which input
+   model is the default.
 
 ## Notes
 

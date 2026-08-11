@@ -125,7 +125,7 @@ public final class Machine {
 
     private CalcState computeFrom(CalcState from, Op op) {
         return switch (op) {
-            case Op.Push p -> from.withStack(append(from, evaluate(p.value())));
+            case Op.Push p -> from.withStack(append(from, evaluate(p.value(), from.modes())));
             case Op.Drop d -> {
                 List<Expr> next = from.mutableStack();
                 require(from, d.count());
@@ -158,7 +158,7 @@ public final class Machine {
                 List<Expr> next = from.mutableStack();
                 List<Expr> args = new ArrayList<>(next.subList(next.size() - a.arity(), next.size()));
                 next.subList(next.size() - a.arity(), next.size()).clear();
-                next.add(evaluate(Exprs.call(a.head(), args)));
+                next.add(evaluate(Exprs.call(a.head(), args), from.modes()));
                 yield from.withStack(next);
             }
             case Op.Store s -> {
@@ -173,18 +173,23 @@ public final class Machine {
                 // expression in terms of something you have not defined yet.
                 yield from.withStack(append(from, value == null ? Exprs.sym(r.name()) : value));
             }
+            case Op.SetModes m -> {
+                // Same modes is not an operation: it would push an undo entry that changes nothing,
+                // and someone pressing "degrees" twice would then need two undos to get back.
+                yield from.modes().equals(m.modes()) ? from : from.withModes(m.modes());
+            }
             case Op.Evaluate ignored -> {
                 require(from, 1);
                 List<Expr> next = from.mutableStack();
-                next.set(next.size() - 1, evaluate(next.get(next.size() - 1)));
+                next.set(next.size() - 1, evaluate(next.get(next.size() - 1), from.modes()));
                 yield from.withStack(next);
             }
         };
     }
 
-    private Expr evaluate(Expr e) {
+    private Expr evaluate(Expr e, Modes modes) {
         try {
-            Expr result = evaluator.evaluate(e);
+            Expr result = evaluator.evaluate(e, modes);
             return result == null ? e : result;
         } catch (MachineException ex) {
             throw ex;

@@ -49,6 +49,20 @@ public final class Chords {
      * chord, not one.
      */
     public static String chordFor(KeyEvent event) {
+        return chordFor(event, false);
+    }
+
+    /**
+     * The chord for this event, given whether a prefix is currently being held.
+     *
+     * <p>{@code continuing} is what makes {@code C-x u} and {@code M-m r} reachable at all. "An
+     * unmodified letter is not a chord" is the right rule for a resting keyboard — it is what lets the
+     * echo area be typed into — and the wrong one the instant a prefix is pending, because then the
+     * letter is the second half of a sequence the user has already begun. Without it the second key of
+     * every two-key binding went into the text field and the prefix hung there for ever, which is a
+     * binding that silently does not exist.
+     */
+    public static String chordFor(KeyEvent event, boolean continuing) {
         KeyCode code = event.getCode();
         if (code == null || code == KeyCode.UNDEFINED || code.isModifierKey()) {
             return null;
@@ -56,7 +70,7 @@ public final class Chords {
         boolean modified = event.isControlDown() || event.isAltDown() || event.isMetaDown();
         String name = NAMED.get(code);
         if (name == null) {
-            if (!modified) {
+            if (!modified && !continuing) {
                 return null; // a printable key with nothing held: let it type
             }
             name = keyName(code);

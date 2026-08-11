@@ -79,6 +79,21 @@ public sealed interface Op {
     /** Replace the top value with the result of evaluating it again — Calc's {@code =}. */
     record Evaluate() implements Op {}
 
+    /**
+     * Replace the mode line.
+     *
+     * <p>An operation rather than a setter, so that a mode change is undoable like everything else.
+     * Modes live in {@link CalcState}, and someone who switches to degrees, gets an answer they did not
+     * expect and presses undo should get the mode back along with the answer.
+     */
+    record SetModes(Modes modes) implements Op {
+        public SetModes {
+            if (modes == null) {
+                throw new IllegalArgumentException("null modes");
+            }
+        }
+    }
+
     private static void requirePositive(int n, String what) {
         if (n < 1) {
             throw new IllegalArgumentException(what + " must be at least 1");

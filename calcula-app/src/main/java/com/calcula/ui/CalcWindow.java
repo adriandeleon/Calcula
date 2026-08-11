@@ -38,6 +38,7 @@ import com.calcula.machine.CalcState;
 import com.calcula.machine.Evaluator;
 import com.calcula.machine.Machine;
 import com.calcula.machine.MachineException;
+import com.calcula.machine.Modes;
 import com.calcula.machine.Op;
 import com.calcula.machine.TrailEntry;
 import com.calcula.parse.Formatter;
@@ -180,8 +181,12 @@ public final class CalcWindow {
      * <p>With no engine loaded the expression comes back untouched rather than raising. That is the
      * degradation that matters: exact arithmetic still works through the numeric fold, and {@code x + 1}
      * simply stays {@code x + 1} instead of every symbolic entry becoming an error.
+     *
+     * <p>The modes are unused here on purpose: everything they affect — the angle unit, the precision,
+     * whether to ask for a number — has already been applied to the expression by the time it arrives,
+     * so this half only has to talk to the CAS.
      */
-    private Expr askEngine(Expr e) {
+    private Expr askEngine(Expr e, Modes modes) {
         if (PlotValue.isPlot(e)) {
             // $Plot is ours, not the engine's. Sending it would be a pointless round trip at best and
             // an unrecognised-symbol error at worst.
@@ -253,6 +258,70 @@ public final class CalcWindow {
             reader = reader instanceof AlgebraicReader ? new RpnReader() : new AlgebraicReader();
             onMachine(m -> m.record(new TrailEntry(TrailEntry.Kind.NOTE, "entry: " + reader.id())));
         });
+        registerModeCommands();
+    }
+
+    /**
+     * The mode line, as commands.
+     *
+     * <p>Each one is a {@link Op.SetModes} rather than a field write, so flipping to degrees lands in
+     * the undo history beside the answers it changes.
+     */
+    private void registerModeCommands() {
+        modeCommand("mode.radians", "Radians", "Read angles in radians", m -> m.withAngle(Modes.Angle.RADIANS));
+        modeCommand("mode.degrees", "Degrees", "Read angles in degrees", m -> m.withAngle(Modes.Angle.DEGREES));
+        modeCommand("mode.gradians", "Gradians", "Read angles in gradians", m -> m.withAngle(Modes.Angle.GRADIANS));
+        modeCommand(
+                "mode.symbolic",
+                "Toggle symbolic",
+                "Keep exact results, or evaluate them numerically",
+                m -> m.withSymbolic(!m.symbolic()));
+        modeCommand(
+                "mode.fractions",
+                "Toggle fractions",
+                "Show exact fractions, or decimals",
+                m -> m.withFractions(!m.fractions()));
+        registry.register(
+                "mode.precision", "Set precision", "Working digits for inexact arithmetic", this::setPrecision);
+    }
+
+    private void modeCommand(String id, String title, String help, java.util.function.UnaryOperator<Modes> change) {
+        registry.register(
+                id,
+                title,
+                help,
+                () -> onMachine(m -> {
+                    m.apply(new Op.SetModes(change.apply(m.modes())));
+                    m.record(new TrailEntry(TrailEntry.Kind.NOTE, m.modes().describe()));
+                }));
+    }
+
+    /**
+     * Precision, taken from whatever is typed on the input line.
+     *
+     * <p>The input line is this application's minibuffer, so "type 20, press the key" is the same
+     * gesture Calc uses for a numeric prefix — and it needs no dialog. An empty or non-numeric line
+     * says so rather than silently doing nothing.
+     */
+    private void setPrecision() {
+        String typed = input.getText().trim();
+        int digits;
+        try {
+            digits = Integer.parseInt(typed);
+        } catch (NumberFormatException e) {
+            onMachine(m -> m.recordError("type the number of digits on the input line, then press the key"));
+            return;
+        }
+        if (digits < Modes.MIN_PRECISION || digits > Modes.MAX_PRECISION) {
+            onMachine(m ->
+                    m.recordError("precision must be between " + Modes.MIN_PRECISION + " and " + Modes.MAX_PRECISION));
+            return;
+        }
+        input.clear();
+        onMachine(m -> {
+            m.apply(new Op.SetModes(m.modes().withPrecision(digits)));
+            m.record(new TrailEntry(TrailEntry.Kind.NOTE, m.modes().describe()));
+        });
     }
 
     /** Provisional bindings. Only chords appear here; plain letters have to keep typing. */
@@ -272,20 +341,34 @@ public final class CalcWindow {
         // Both spellings: Chords emits Cmd- on macOS and C- elsewhere.
         keymap.bind("C-c", "edit.copy");
         keymap.bind("Cmd-c", "edit.copy");
+        // Calc's mode prefix is a bare "m"; here it has to carry a modifier, because a plain letter
+        // must keep reaching the input line.
+        keymap.bind("M-m r", "mode.radians");
+        keymap.bind("M-m d", "mode.degrees");
+        keymap.bind("M-m g", "mode.gradians");
+        keymap.bind("M-m p", "mode.precision");
+        keymap.bind("M-m s", "mode.symbolic");
+        keymap.bind("M-m f", "mode.fractions");
     }
 
     private void onKey(KeyEvent event) {
-        String chord = Chords.chordFor(event);
+        // While a prefix is held every key belongs to the dispatcher, including a bare letter that
+        // would otherwise type. That is what makes the second half of C-x u or M-m r arrive at all.
+        boolean continuing = dispatcher.hasPending();
+        String chord = Chords.chordFor(event, continuing);
         if (chord == null) {
             return; // ordinary typing
         }
         // Backspace must delete text when there is text to delete; only an empty field pops the stack.
-        // This is the one place the widget's own job overrides a binding.
-        if ("DEL".equals(chord) && !input.getText().isEmpty()) {
+        // This is the one place the widget's own job overrides a binding — and not mid-sequence, where
+        // the keyboard has already been handed over.
+        if (!continuing && "DEL".equals(chord) && !input.getText().isEmpty()) {
             return;
         }
         KeyDispatcher.Result result = dispatcher.press(chord);
-        if (result.consumed()) {
+        // A key that completes nothing still gets eaten while a sequence was in progress: the user
+        // asked for a command, and a stray letter appearing in the input line is not the answer.
+        if (result.consumed() || continuing) {
             event.consume();
         }
         if (result.outcome() == KeyDispatcher.Outcome.PENDING) {
@@ -613,6 +696,21 @@ public final class CalcWindow {
     /** Visible for tests: feed a chord, as the key filter would. */
     public KeyDispatcher.Result press(String chord) {
         return dispatcher.press(chord);
+    }
+
+    /** Visible for tests: put text on the input line without submitting it. */
+    public void type(String text) {
+        input.setText(text);
+    }
+
+    /** Visible for tests: what the input line currently holds. */
+    public String typed() {
+        return input.getText();
+    }
+
+    /** Visible for tests: the mode line, as it reads. */
+    public String modeLine() {
+        return modes.getText();
     }
 
     public String readerId() {
