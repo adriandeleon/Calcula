@@ -12,12 +12,15 @@ buttons anywhere. Input is keystrokes with prefix dispatch.
   works from the reactor root or from inside `calcula-app/`)
 - Test: `mvn verify` — or `mvn test -DexcludedGroups=fx` for the pure suite alone
 - Format: `mvn spotless:apply` **before committing** — `spotless:check` runs at `verify`
+- Package: `mvn clean -Pdist package` ⇒ `calcula-dist/target/dist/Calcula-<version>.dmg`
+  (`.deb` on Linux, `.msi` on Windows). The `clean` is not optional — see below.
 
 ## Layout
 
 ```
 calcula-app/         modular, jlink'd. Owns the CasEngine INTERFACE.
 calcula-cas-symja/   plain non-modular jar. Owns the Symja IMPLEMENTATION.
+calcula-dist/        delivery only. Nothing is built here; it exists to run last.
 ```
 
 The split is load-bearing. `calcula-app` does **not** depend on `calcula-cas-symja`; the engine is
@@ -70,7 +73,8 @@ Two things there are load-bearing and easy to undo by accident:
 
 ## Status
 
-Foundation complete and green (154 tests). The layers, innermost first:
+Foundation complete and green (296 tests), and it packages into a native app. The layers,
+innermost first:
 
 | Package | What it is |
 |---|---|
@@ -85,6 +89,7 @@ Foundation complete and green (154 tests). The layers, innermost first:
 | `export` | TeX and MathML writers over the same tree |
 | `plot` | Expr → double closure, sampler with pole breaks, viewport, ticks |
 | `ui.plot` | The canvas, with drag and scroll |
+| `calcula-dist` | Delivery only: jlink, jpackage, the AOT cache, and staging the CAS |
 
 Everything below `ui` is toolkit-free and unit-tested.
 
@@ -139,6 +144,37 @@ the interactive half, and neither replaces the other.
 Still to do: shaded area labelled with the closed-form integral, and a tangent line at the
 cursor.
 
+### Packaging
+
+```
+mvn clean -Pdist package
+```
+
+94 MB DMG, 40 MB of which is the CAS. `clean` is not optional: an incremental compile does
+not regenerate a synthetic `$SwitchMap` class once it is missing, so jlink can ship an image
+that throws `ClassNotFoundException` on first use — in the packaged build only.
+
+The architecture pays off here. The modular half is JavaFX, AtlantaFX and our own jar, all
+three of which carry a real `module-info`, so **there is no moditect step at all** — the 49
+hand-written descriptors that made the classpath decision worth taking never have to exist.
+The CAS is copied in as a plain `cas/` directory beside the launcher, which is also what
+makes the LGPL relink obligation a non-event.
+
+`calcula-dist` exists because a Maven reactor finishes every phase of one module before
+starting the next, and the CAS jars are staged during `calcula-cas-symja:package`. Packaging
+from `calcula-app` would therefore run before they existed and ship an app that opens fine
+and says "CAS: unavailable" — a build-order fault wearing the costume of a code bug.
+
+Two phases, because the AOT cache has to be trained against the image's own runtime, which
+only exists after jlink and must be inside the installer. Training launches the real
+application with a real window — the win is JavaFX's scene/control/CSS class loading, none
+of which happens headless — and it exits itself after settling. Measured on this machine,
+interleaved A/B: **810 ms cached against 1174 ms uncached, a 31% cold start**, for 62 MB.
+
+Verified by running the built app rather than by reading the build log: it loads
+`symja 3.0.0` from inside the bundle, maps its cache, reports version 0.1.0 rather than the
+jpackage placeholder, and passes `codesign -v` in both the DMG and the app-image delivery.
+
 ### Copying
 
 `C-c` (`Cmd-c` on macOS) puts the top of the stack on the clipboard in **every** format at
@@ -179,13 +215,15 @@ needs no dialog.
 `input.toggleModel` (`M-i`) switches at runtime, and a test pins that `5 3 -` and
 `5 - 3` reach identical states. Algebraic is the provisional start.
 
-### Not built yet, in intended order
+### Not built yet
 
-1. Packaging (`-Pdist`): moditect for the app's own few automatic modules, jpackage,
-   AOT training, and staging `cas/*.jar` into the app image beside the launcher.
-2. Smaller things deferred along the way: a shaded plot area labelled with the
-   closed-form integral, a tangent line at the cursor, and — still open — which input
-   model is the default.
+- Release CI: a matrix building one installer per target. The build itself is done and
+  runs on any of them; nothing automates it yet, and only macOS has been built for real.
+- Notarization, so a downloaded DMG opens without a Gatekeeper warning. The app is
+  ad-hoc-signed, which is enough for a locally built copy and not for a download.
+- Smaller things deferred along the way: a shaded plot area labelled with the closed-form
+  integral, a tangent line at the cursor, and — still open — which input model is the
+  default.
 
 ## Notes
 

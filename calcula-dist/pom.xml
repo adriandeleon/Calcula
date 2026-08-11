@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Delivery. Nothing is built here — this module exists to run LAST.
+
+  A Maven reactor finishes every phase of one module before starting the next, and calcula-cas-symja
+  stages its 58 jars into calcula-app/target/cas during its own `package`. So packaging the image from
+  calcula-app would run before the CAS existed and ship an app that opens fine and says
+  "CAS: unavailable" — the failure is quiet, and looks like a code bug rather than a build-order one.
+
+  The two dependencies below are ordering declarations as much as dependencies:
+
+    calcula-app         compile  — the modular app, and what copy-dependencies stages onto the module path
+    calcula-cas-symja   provided — ordering only. `provided` is what keeps its 58 jars OFF the module
+                                   path (copy-dependencies with includeScope=runtime skips it), which is
+                                   the whole point of the architecture; they are staged as a plain
+                                   classpath directory by aot_build.java instead.
+
+  Without -Pdist this module does nothing at all.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.calcula</groupId>
+        <artifactId>calcula-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>calcula-dist</artifactId>
+    <packaging>pom</packaging>
+    <name>Calcula Dist</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.calcula</groupId>
+            <artifactId>calcula-app</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.calcula</groupId>
+            <artifactId>calcula-cas-symja</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <properties>
+        <!-- Where calcula-cas-symja staged its jars, and where the dev run reads them from. -->
+        <calcula.cas.staged>${project.basedir}/../calcula-app/target/cas</calcula.cas.staged>
+        <calcula.branding>${project.basedir}/../branding</calcula.branding>
+        <!-- The os-* profiles in the reactor root name the FILE; only this module knows where
+             branding/ is, since ${project.basedir} in an inherited profile points at the
+             inheriting module rather than at the root. -->
+        <jpackage.icon>${calcula.branding}/${jpackage.iconName}</jpackage.icon>
+    </properties>
+
+    <profiles>
+        <profile>
+            <id>dist</id>
+            <build>
+                <plugins>
+                    <!--
+                      The module path. There is no moditect step and there does not need to be: the
+                      modular half of this application is JavaFX + AtlantaFX + our own jar, and all three
+                      carry a real module-info. That is a consequence of the CAS living on the classpath —
+                      matheclipse's 58 jars, of which only 9 are modular, would otherwise need ~49
+                      hand-written descriptors.
+
+                      If a non-modular dependency is ever added to calcula-app, add a moditect
+                      add-module-info execution here BEFORE this one, writing into the same directory.
+                    -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>stage-modules</id>
+                                <phase>package</phase>
+                                <goals><goal>copy-dependencies</goal></goals>
+                                <configuration>
+                                    <outputDirectory>${project.build.directory}/mods</outputDirectory>
+                                    <includeScope>runtime</includeScope>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <!--
+                              The classifier-less org.openjfx jars are EMPTY AGGREGATORS — javafx-controls
+                              -26.0.1.jar carries no classes and no module-info, so it derives the automatic
+                              module name javafx.controlsEmpty. jlink cannot link an automatic module at
+                              all, so leaving them beside the real platform-classified jars fails the link
+                              with an error naming a module nobody wrote.
+
+                              The pattern deliberately anchors on the version: the real jars end
+                              -mac-aarch64.jar, so `javafx-*-${javafx.version}.jar` matches only the
+                              aggregators.
+                            -->
+                            <execution>
+                                <id>drop-javafx-aggregators</id>
+                                <phase>package</phase>
+                                <goals><goal>run</goal></goals>
+                                <configuration>
+                                    <target>
+                                        <delete verbose="true">
+                                            <fileset dir="${project.build.directory}/mods">
+                                                <include name="javafx-*-${javafx.version}.jar"/>
+                                            </fileset>
+                                        </delete>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <!--
+                      PHASE 1: a jlink'd APP_IMAGE, always. The installer is wrapped later by
+                      aot_build.java, because the AOT cache has to be trained against the image's own
+                      runtime — which only exists after this step, and must be inside the installer.
+                    -->
+                    <plugin>
+                        <groupId>org.panteleyev</groupId>
+                        <artifactId>jpackage-maven-plugin</artifactId>
+                        <version>${jpackage.plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>jpackage-app-image</id>
+                                <phase>package</phase>
+                                <goals><goal>jpackage</goal></goals>
+                                <configuration>
+                                    <type>APP_IMAGE</type>
+                                    <name>Calcula</name>
+                                    <!-- NOT project.version: jpackage rejects a leading 0. on macOS. -->
+                                    <appVersion>${jpackage.appVersion}</appVersion>
+                                    <vendor>Calcula</vendor>
+                                    <icon>${jpackage.icon}</icon>
+                                    <module>com.calcula/com.calcula.App</module>
+                                    <modulePaths>
+                                        <modulePath>${project.build.directory}/mods</modulePath>
+                                    </modulePaths>
+                                    <javaOptions>
+                                        <javaOption>--enable-native-access=javafx.graphics</javaOption>
+                                        <!-- Per-OS: mac mtl,es2,sw / win d3d,es2,sw / linux es2,sw. Metal is
+                                             opt-in in JavaFX 26 and fixes es2 render-to-texture glitches on
+                                             Apple silicon; the rest of the chain remains as fallback. -->
+                                        <javaOption>-Dprism.order=${prism.pipeline}</javaOption>
+                                        <!-- Ceilings, not reservations. Exhausting the default 512 MB texture
+                                             pool NPEs the render thread and the window goes black — packaged
+                                             builds only. -->
+                                        <javaOption>-Dprism.maxvram=2G</javaOption>
+                                        <javaOption>-Dprism.maxTextureSize=16384</javaOption>
+                                        <!-- Without -Xmx, jpackage inherits ~1/4 of physical RAM and RSS grows
+                                             to match. G1 with periodic uncommit measured -37% RSS and -80% max
+                                             pause against SerialGC on a real session. -->
+                                        <javaOption>-Xmx2g</javaOption>
+                                        <javaOption>-XX:+UseG1GC</javaOption>
+                                        <javaOption>-XX:G1PeriodicGCInterval=30000</javaOption>
+                                        <!-- The CAS, as a plain directory of jars beside the launcher.
+                                             $APPDIR is expanded by the launcher, not by the shell — which is
+                                             also why aot_build.java has to pass it explicitly when it invokes
+                                             bin/java directly for the training run. -->
+                                        <javaOption>-Dcalcula.cas.dir=$APPDIR/cas</javaOption>
+                                        <!-- Written after this image is built. A missing file degrades to a
+                                             normal start under the default AOTMode=auto, so a failed training
+                                             run can never break launch. -->
+                                        <javaOption>-XX:AOTCache=$APPDIR/calcula.aot</javaOption>
+                                    </javaOptions>
+                                    <!-- Deliberately no strip-native-commands here: bin/java is what trains
+                                         the cache. aot_build.java deletes bin/ afterwards, reclaiming the
+                                         same footprint, except on Windows where the JVM itself lives in it. -->
+                                    <jLinkOptions>
+                                        <jLinkOption>--strip-debug</jLinkOption>
+                                        <jLinkOption>--no-man-pages</jLinkOption>
+                                        <jLinkOption>--no-header-files</jLinkOption>
+                                        <jLinkOption>--compress=zip-6</jLinkOption>
+                                    </jLinkOptions>
+                                    <destination>${project.build.directory}/aot-image</destination>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <!-- PHASE 2: stage the CAS, train the cache, strip bin/, wrap the installer.
+                         Declared after jpackage so it runs later in the same phase. -->
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>stage-cas-train-and-deliver</id>
+                                <phase>package</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <executable>${java.home}/bin/java</executable>
+                                    <arguments>
+                                        <argument>${project.basedir}/../scripts/aot_build.java</argument>
+                                        <argument>${project.build.directory}/aot-image</argument>
+                                        <argument>Calcula</argument>
+                                        <argument>${jpackage.appVersion}</argument>
+                                        <argument>${jpackage.publicVersion}</argument>
+                                        <argument>${jpackage.type}</argument>
+                                        <argument>${jpackage.icon}</argument>
+                                        <argument>${project.build.directory}/dist</argument>
+                                        <argument>com.calcula/com.calcula.App</argument>
+                                        <argument>${calcula.cas.staged}</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

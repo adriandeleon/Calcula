@@ -6,10 +6,12 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javafx.animation.PauseTransition;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 
 import com.calcula.cas.CasEngineLoader;
 import com.calcula.ui.CalcWindow;
@@ -19,6 +21,9 @@ import com.calcula.ui.Themes;
 public final class App extends Application {
 
     private static final Logger LOG = Logger.getLogger(App.class.getName());
+
+    /** How long the AOT training run keeps the window up before quitting. */
+    private static final double TRAIN_SETTLE_SECONDS = 2.5;
 
     private CalcWindow window;
 
@@ -57,6 +62,34 @@ public final class App extends Application {
                     LOG.log(Level.WARNING, "CAS load failed", t);
                     return null;
                 });
+
+        maybeExitAfterTraining();
+    }
+
+    /**
+     * The AOT training run: render, settle, quit.
+     *
+     * <p>The build trains the cache by launching this application for real and letting it exit itself.
+     * It has to be a real window rather than a headless start, because the whole win is JavaFX's
+     * scene/control/CSS class loading, and none of that happens until something renders — a headless
+     * trainer measures as gaining approximately nothing.
+     *
+     * <p>The settle is what makes the cache worth having: the first frame is only the beginning, and
+     * the debounced highlighting, the typeset layout and the CAS load all come after it. Exiting on the
+     * first pulse would archive a fraction of what a real session touches.
+     *
+     * <p>Inert unless the property is set, so it costs a delivered app one system-property read.
+     */
+    private static void maybeExitAfterTraining() {
+        if (System.getProperty("calcula.aotTrainExit") == null) {
+            return;
+        }
+        LOG.info("AOT training run: exiting once the window has settled");
+        PauseTransition settle = new PauseTransition(Duration.seconds(TRAIN_SETTLE_SECONDS));
+        // Halt rather than Platform.exit: a clean shutdown would tear down the CAS loader mid-flight,
+        // and the point here is the class list already recorded, not an orderly close.
+        settle.setOnFinished(e -> Runtime.getRuntime().halt(0));
+        settle.play();
     }
 
     /**

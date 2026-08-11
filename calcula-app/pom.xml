@@ -125,8 +125,13 @@
                 <version>${javafx.plugin.version}</version>
                 <configuration>
                     <mainClass>com.calcula/com.calcula.App</mainClass>
-                    <!-- Mirror the packaged runtime's options so dev == production. -->
+                    <!-- Mirror the packaged runtime's options so dev == production. The only one not
+                         mirrored is the AOT cache, which only a packaged image has. -->
                     <options>
+                        <!-- Per-OS, from the reactor root's os-* profiles. Without it the dev run takes
+                             JavaFX's own default pipeline, which need not be the packaged one — so a
+                             renderer-specific glitch would appear for the first time after packaging. -->
+                        <option>-Dprism.order=${prism.pipeline}</option>
                         <option>-Dprism.maxvram=2G</option>
                         <option>-Dprism.maxTextureSize=16384</option>
                         <option>-Xmx2g</option>

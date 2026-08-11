@@ -42,6 +42,8 @@
     <modules>
         <module>calcula-app</module>
         <module>calcula-cas-symja</module>
+        <!-- LAST, and it has to stay last: it packages what the other two produce. -->
+        <module>calcula-dist</module>
     </modules>
 
     <properties>
@@ -57,6 +59,18 @@
         <jacoco.version>0.8.13</jacoco.version>
         <spotless.version>3.6.0</spotless.version>
         <palantir.version>2.92.0</palantir.version>
+        <jpackage.plugin.version>1.6.6</jpackage.plugin.version>
+
+        <!--
+          Defaults for the dist profile, overridden per OS below. Declared here so that
+          `mvn -Pdist package` on an unrecognised platform fails with a jpackage error naming the type,
+          rather than with an unresolved-property error naming nothing.
+        -->
+        <jpackage.type>APP_IMAGE</jpackage.type>
+        <jpackage.iconName>calcula.png</jpackage.iconName>
+        <prism.pipeline>es2,sw</prism.pipeline>
+        <jpackage.publicVersion>0.1.0</jpackage.publicVersion>
+        <jpackage.appVersion>1.1.0</jpackage.appVersion>
 
         <!-- Latest RELEASE on Maven Central is 3.0.0 (Nov 2023); the GitHub project is active but
              publishes snapshots. Pin deliberately and re-check before a release. -->
@@ -128,4 +142,152 @@
             </plugin>
         </plugins>
     </build>
+
+    <!--
+      Per-OS packaging. There is no cross-building: jpackage and JavaFX are both host-specific, so each
+      OS builds its own installer and the release workflow is a matrix rather than one job.
+
+      Each profile computes two version numbers, and the difference between them matters:
+
+        jpackage.publicVersion  the TRUE version — ${project.version} minus -SNAPSHOT
+        jpackage.appVersion     what jpackage is actually handed
+
+      They differ only on macOS, where jpackage refuses a version whose first number is zero — so a
+      0.1.0 project cannot be packaged at all without a bumped placeholder. The placeholder is bundle
+      metadata only, and aot_build.java rewrites Info.plist back to the true version before the DMG
+      wrap, so it never reaches a user's Get Info panel.
+    -->
+    <profiles>
+        <profile>
+            <id>os-mac</id>
+            <activation><os><family>mac</family></os></activation>
+            <properties>
+                <jpackage.type>DMG</jpackage.type>
+                <jpackage.iconName>calcula.icns</jpackage.iconName>
+                <!-- JavaFX 26's Metal pipeline, which fixes the es2/OpenGL render-to-texture glitches on
+                     Apple silicon. es2 and sw remain as fallbacks. -->
+                <prism.pipeline>mtl,es2,sw</prism.pipeline>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>mac-jpackage-versions</id>
+                                <phase>initialize</phase>
+                                <goals><goal>run</goal></goals>
+                                <configuration>
+                                    <exportAntProperties>true</exportAntProperties>
+                                    <target>
+                                        <loadresource property="jpackage.publicVersion">
+                                            <propertyresource name="project.version"/>
+                                            <filterchain>
+                                                <tokenfilter>
+                                                    <replaceregex pattern="-SNAPSHOT$" replace="" flags="gi"/>
+                                                </tokenfilter>
+                                            </filterchain>
+                                        </loadresource>
+                                        <!-- 0.1.0 -> 1.1.0. Bundle metadata only; rewritten back before the wrap. -->
+                                        <loadresource property="jpackage.appVersion">
+                                            <propertyresource name="jpackage.publicVersion"/>
+                                            <filterchain>
+                                                <tokenfilter>
+                                                    <replaceregex pattern="^0\." replace="1." flags="g"/>
+                                                </tokenfilter>
+                                            </filterchain>
+                                        </loadresource>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>os-linux</id>
+            <activation><os><family>unix</family><name>linux</name></os></activation>
+            <properties>
+                <jpackage.type>DEB</jpackage.type>
+                <jpackage.iconName>calcula.png</jpackage.iconName>
+                <prism.pipeline>es2,sw</prism.pipeline>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>linux-jpackage-versions</id>
+                                <phase>initialize</phase>
+                                <goals><goal>run</goal></goals>
+                                <configuration>
+                                    <exportAntProperties>true</exportAntProperties>
+                                    <target>
+                                        <loadresource property="jpackage.publicVersion">
+                                            <propertyresource name="project.version"/>
+                                            <filterchain>
+                                                <tokenfilter>
+                                                    <replaceregex pattern="-SNAPSHOT$" replace="" flags="gi"/>
+                                                </tokenfilter>
+                                            </filterchain>
+                                        </loadresource>
+                                        <!-- Linux accepts a leading 0., so the two are the same number. -->
+                                        <property name="jpackage.appVersion" value="${jpackage.publicVersion}"/>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>os-windows</id>
+            <activation><os><family>windows</family></os></activation>
+            <properties>
+                <jpackage.type>MSI</jpackage.type>
+                <jpackage.iconName>calcula.ico</jpackage.iconName>
+                <!-- Must keep d3d: a blanket mtl,es2,sw would strip Direct3D and lose GPU acceleration. -->
+                <prism.pipeline>d3d,es2,sw</prism.pipeline>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>windows-jpackage-versions</id>
+                                <phase>initialize</phase>
+                                <goals><goal>run</goal></goals>
+                                <configuration>
+                                    <exportAntProperties>true</exportAntProperties>
+                                    <target>
+                                        <loadresource property="jpackage.publicVersion">
+                                            <propertyresource name="project.version"/>
+                                            <filterchain>
+                                                <tokenfilter>
+                                                    <replaceregex pattern="-SNAPSHOT$" replace="" flags="gi"/>
+                                                </tokenfilter>
+                                            </filterchain>
+                                        </loadresource>
+                                        <property name="jpackage.appVersion" value="${jpackage.publicVersion}"/>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
