@@ -102,6 +102,34 @@ class ExprPathTest {
     }
 
     @Test
+    void siblingsStepAlongTheArgumentsOfTheParent() {
+        Expr root = Parser.parse("f(a, b, c)");
+        assertEquals(List.of(1), ExprPath.sibling(root, List.of(0), 1));
+        assertEquals(List.of(0), ExprPath.sibling(root, List.of(1), -1));
+        assertEquals("b", Formatter.format(ExprPath.at(root, ExprPath.sibling(root, List.of(0), 1))));
+    }
+
+    @Test
+    void thereIsNoSiblingPastEitherEnd() {
+        Expr root = Parser.parse("f(a, b)");
+        assertNull(ExprPath.sibling(root, List.of(1), 1));
+        assertNull(ExprPath.sibling(root, List.of(0), -1));
+    }
+
+    @Test
+    void theWholeFormulaHasNoSiblings() {
+        assertNull(ExprPath.sibling(Parser.parse("x + 1"), ExprPath.ROOT, 1));
+    }
+
+    @Test
+    void aSiblingIsFoundThroughTheParentsArityNotTheChildsOwn() {
+        // The reason this takes the root: a path alone cannot know how many arguments it has beside it.
+        Expr root = Parser.parse("f(g(a, b, c), d)");
+        assertEquals(List.of(0, 2), ExprPath.sibling(root, List.of(0, 1), 1));
+        assertNull(ExprPath.sibling(root, List.of(1), 1), "d is the last of two");
+    }
+
+    @Test
     void depthIsWhatPicksTheInnermostNodeUnderAClick() {
         assertTrue(ExprPath.depth(List.of(0, 1)) > ExprPath.depth(List.of(0)));
     }

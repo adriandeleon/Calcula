@@ -415,3 +415,10 @@
     -fx-background-color: -color-accent-subtle;
     -fx-background-radius: 3;
 }
+
+/* The work-in-progress indicator. Deliberately quiet: it appears only for work
+   that outlasts 150 ms, and something that announces itself loudly every time
+   the engine is consulted reads as instability rather than as progress. */
+.mode-busy {
+    -fx-text-fill: -color-accent-fg;
+}

@@ -124,6 +124,27 @@ public final class CalcWindow {
     private final ListView<TrailEntry> trailView = new ListView<>(trailLines);
     private final Label modes = new Label();
     private final Label engineStatus = new Label("CAS: loading…");
+    private final Label busy = new Label("working…");
+
+    /**
+     * How many machine calls are in flight.
+     *
+     * <p>Counted rather than flagged, because calls overlap: a plot computes its analysis while the
+     * entry that produced it is still being recorded, and a flag would be cleared by whichever
+     * finished first while the other was still running.
+     */
+    private int inFlight;
+
+    /**
+     * Delay before the indicator appears.
+     *
+     * <p>Most operations are arithmetic and finish in under a millisecond. Showing "working…" for
+     * every one of them would be a flicker on every keystroke, which reads as instability rather than
+     * as progress. Only work that outlasts this is worth mentioning.
+     */
+    private final javafx.animation.PauseTransition busyDelay =
+            new javafx.animation.PauseTransition(javafx.util.Duration.millis(150));
+
     private final Label prompt = new Label("›");
     private final TextField input = new TextField();
 
@@ -392,6 +413,23 @@ public final class CalcWindow {
         registry.register(
                 "select.narrow", "Select inner part", "Shrink the selection to its first part", this::narrowSelection);
         registry.register("select.clear", "Clear selection", "Select nothing", () -> select(null));
+        // One command per transform, generated from the same table the menu is built from — so a
+        // transform is bindable, palette-searchable and menu-visible without being written down twice.
+        PART_TRANSFORMS.forEach((title, head) -> registry.register(
+                transformCommandId(head),
+                title + " selected part",
+                "Rewrite the selected part of the entry",
+                () -> rewriteSelection(head)));
+        registry.register(
+                "select.nextSibling",
+                "Select next part",
+                "Move the selection to the part beside it",
+                () -> moveSibling(1));
+        registry.register(
+                "select.previousSibling",
+                "Select previous part",
+                "Move the selection to the part before it",
+                () -> moveSibling(-1));
         registry.register(
                 "select.replace",
                 "Replace selected part…",
@@ -493,8 +531,12 @@ public final class CalcWindow {
             // Rewriting needs the address; extracting and copying do not. A part with no address —
             // one the layout synthesised — still offers those three and simply cannot offer these.
             Menu rewrite = new Menu("Rewrite  " + shown);
-            PART_TRANSFORMS.forEach((title, head) ->
-                    rewrite.getItems().add(menuItem(title, () -> rewritePart(position, clicked, head))));
+            // The very same commands the keyboard runs. The right-click already SELECTED this part,
+            // so menu and keyboard are operating on one selection rather than on two ideas of one.
+            PART_TRANSFORMS.forEach((title, head) -> rewrite.getItems()
+                    .add(menuItem(
+                            title + "   (" + chordFor(transformCommandId(head)) + ")",
+                            () -> runCommand(transformCommandId(head)))));
             menu.getItems().addAll(rewrite, new SeparatorMenuItem());
         }
         menu.getItems()
@@ -528,22 +570,27 @@ public final class CalcWindow {
      * path that now addresses something else would rewrite the wrong part in silence. Saying so and
      * doing nothing is the only safe answer.
      */
-    private void rewritePart(int position, MathLayout.Selection selection, String head) {
+    private void rewriteSelection(String head) {
+        if (selected == null) {
+            noteFromFx("nothing is selected — click a part of a formula first");
+            return;
+        }
+        Selected target = selected;
         onMachine(m -> {
-            Expr entry = m.state().at(position);
-            Expr current = ExprPath.at(entry, selection.path());
-            if (current == null || !current.equals(selection.expr())) {
+            Expr entry = m.state().at(target.position());
+            Expr current = ExprPath.at(entry, target.at().path());
+            if (current == null || !current.equals(target.at().expr())) {
                 m.record(new TrailEntry(TrailEntry.Kind.NOTE, "that part has moved; nothing was changed"));
                 return;
             }
             Expr transformed = askEngine(Exprs.call(head, current), m.modes());
-            Expr rebuilt = ExprPath.replace(entry, selection.path(), transformed);
+            Expr rebuilt = ExprPath.replace(entry, target.at().path(), transformed);
             if (rebuilt == null || rebuilt.equals(entry)) {
                 m.record(new TrailEntry(TrailEntry.Kind.NOTE, "nothing to change there"));
                 return;
             }
-            m.apply(new Op.ReplaceAt(position, rebuilt));
-            followEdit(position, selection.path(), rebuilt);
+            m.apply(new Op.ReplaceAt(target.position(), rebuilt));
+            followEdit(target.position(), target.at().path(), rebuilt);
         });
     }
 
@@ -697,6 +744,8 @@ public final class CalcWindow {
         // Widen and narrow, the way an outline moves. Bare arrows are input history.
         keymap.bind("M-Up", "select.widen");
         keymap.bind("M-Down", "select.narrow");
+        keymap.bind("M-Right", "select.nextSibling");
+        keymap.bind("M-Left", "select.previousSibling");
     }
 
     private void onKey(KeyEvent event) {
@@ -799,6 +848,7 @@ public final class CalcWindow {
      * snapshot, so the window never touches the machine from two threads.
      */
     private void onMachine(Consumer<Machine> work) {
+        beginWork();
         worker.execute(() -> {
             try {
                 work.accept(machine);
@@ -808,8 +858,41 @@ public final class CalcWindow {
             CalcState snapshot = machine.state();
             // Copied here, on the worker, so the FX thread never reads the machine.
             List<TrailEntry> trail = List.copyOf(machine.trail());
-            Platform.runLater(() -> publish(snapshot, trail));
+            Platform.runLater(() -> {
+                publish(snapshot, trail);
+                endWork();
+            });
         });
+    }
+
+    /**
+     * Note that a machine call has started, and show the indicator if it takes long enough to matter.
+     *
+     * <p>Marshalled onto the FX thread rather than assumed to be on it: {@code setEngine} reports from
+     * the loader thread, and a counter touched from two threads is a counter that drifts.
+     */
+    private void beginWork() {
+        if (!Platform.isFxApplicationThread()) {
+            Platform.runLater(this::beginWork);
+            return;
+        }
+        if (inFlight++ == 0) {
+            busyDelay.playFromStart();
+        }
+    }
+
+    private void endWork() {
+        if (!Platform.isFxApplicationThread()) {
+            Platform.runLater(this::endWork);
+            return;
+        }
+        // Clamped at zero: a stray extra end would otherwise leave the counter negative and the
+        // indicator stuck on for the rest of the session.
+        inFlight = Math.max(0, inFlight - 1);
+        if (inFlight == 0) {
+            busyDelay.stop();
+            busy.setVisible(false);
+        }
     }
 
     /**
@@ -1061,9 +1144,13 @@ public final class CalcWindow {
                     // What was actually clicked, which is usually a PART of the formula rather than
                     // the whole of it. This is the one thing a rendered formula can offer that a line
                     // of text cannot.
-                    MathLayout.Selection under =
-                            e.getTarget() instanceof javafx.scene.Node n ? MathLayout.selectionAt(n) : null;
-                    stackMenu(value, stack.size() - getIndex(), under).show(this, e.getScreenX(), e.getScreenY());
+                    MathLayout.Selection under = e.getTarget() instanceof Node n ? MathLayout.selectionAt(n) : null;
+                    // Selecting first is what keeps one idea of "the part being worked on": the menu
+                    // then offers commands that act on the selection, exactly as the keyboard does.
+                    if (under != null) {
+                        select(new Selected(position, under));
+                    }
+                    stackMenu(value, position, under).show(this, e.getScreenX(), e.getScreenY());
                     e.consume();
                 });
             }
@@ -1184,6 +1271,26 @@ public final class CalcWindow {
      * and narrowing are pure path arithmetic, and the value at each step is looked up rather than
      * searched for.
      */
+    /** The command id for a transform, so the table drives the menu, the palette and the keymap alike. */
+    private static String transformCommandId(String head) {
+        return "select." + head.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** The chord that runs a command, for showing in a menu. Empty when nothing is bound. */
+    private String chordFor(String commandId) {
+        return keymap.invert().getOrDefault(commandId, "");
+    }
+
+    /** Step the selection along its parent's arguments. */
+    private void moveSibling(int by) {
+        withSelection(current -> {
+            Expr entry = valueAt(current.position());
+            List<Integer> next =
+                    entry == null ? null : ExprPath.sibling(entry, current.at().path(), by);
+            return next == null ? null : reselect(current, next);
+        });
+    }
+
     private void widenSelection() {
         withSelection(current -> {
             List<Integer> up = ExprPath.parent(current.at().path());
@@ -1292,7 +1399,7 @@ public final class CalcWindow {
     /**
      * Put {@code replacement} where the selected part is.
      *
-     * <p>Shares {@link #rewritePart}'s guard: the address is re-checked against what was selected, so
+     * <p>Shares {@link #rewriteSelection}'s guard: the address is re-checked against what was selected, so
      * a selection that has gone stale reports itself instead of overwriting whatever now sits there.
      */
     private void substitutePart(Selected target, Expr replacement) {
@@ -1346,9 +1453,19 @@ public final class CalcWindow {
     private Region buildModeLine() {
         modes.getStyleClass().add("mode-item");
         engineStatus.getStyleClass().add("mode-item");
+        busy.getStyleClass().addAll("mode-item", "mode-busy");
+        busy.setVisible(false);
+        // Unmanaged, so appearing and vanishing cannot shift the mode line around it — a status that
+        // moves its neighbours is worse than no status.
+        busy.setManaged(false);
+        busyDelay.setOnFinished(e -> busy.setVisible(true));
+
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox bar = new HBox(modes, spacer, engineStatus);
+        StackPane busySlot = new StackPane(busy);
+        busySlot.setMinWidth(70);
+        busySlot.setPrefWidth(70);
+        HBox bar = new HBox(modes, spacer, busySlot, engineStatus);
         bar.getStyleClass().add("mode-line");
         return bar;
     }
@@ -1449,6 +1566,16 @@ public final class CalcWindow {
     /** Visible for tests: the address of the selection, or null. */
     public List<Integer> selectedPath() {
         return selected == null ? null : selected.at().path();
+    }
+
+    /** Visible for tests: how many machine calls are in flight. */
+    public int workInFlight() {
+        return inFlight;
+    }
+
+    /** Visible for tests: whether the work indicator is on screen. */
+    public boolean busyShowing() {
+        return busy.isVisible();
     }
 
     /** Visible for tests: the mode line, as it reads. */

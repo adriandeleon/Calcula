@@ -192,8 +192,10 @@ means copying works with no engine loaded.
 ### Operating on part of an answer
 
 Click any part of a rendered formula and it highlights; hovering shows what a click would take.
-`M-Up` and `M-Down` widen and narrow the selection through the expression tree, and the right-click
-**Rewrite** menu transforms just that part back into the answer around it:
+`M-Up`/`M-Down` widen and narrow the selection through the expression tree and `M-Left`/`M-Right`
+step along a parent's arguments, so the second argument of a function is reachable without going up
+and back down. Every transform is a command — bindable and palette-searchable — and the right-click
+**Rewrite** menu runs those same commands, because a right-click selects first:
 
 ```
 sqrt(1 - x^2) + arcsin(x)     select 1 - x^2, Rewrite > Factor

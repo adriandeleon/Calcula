@@ -82,6 +82,25 @@ public final class ExprPath {
     }
 
     /**
+     * The path of the sibling {@code by} places along, or null when there is none.
+     *
+     * <p>Takes the root because the answer depends on how many arguments the PARENT has, which a path
+     * on its own does not know. Widening and narrowing walk the left edge of the tree; this is what
+     * reaches the second argument of a function without going up and back down.
+     */
+    public static List<Integer> sibling(Expr root, List<Integer> path, int by) {
+        List<Integer> up = parent(path);
+        if (up == null) {
+            return null; // the whole formula has no siblings
+        }
+        if (!(at(root, up) instanceof Call parent)) {
+            return null;
+        }
+        int next = path.get(path.size() - 1) + by;
+        return next < 0 || next >= parent.arity() ? null : child(up, next);
+    }
+
+    /**
      * How deep a path goes. Used to prefer the innermost of several nodes under one click.
      */
     public static int depth(List<Integer> path) {
