@@ -141,6 +141,45 @@ public final class MathLayout {
     /** Property key for a node's address. Identity-keyed, so nothing else can collide with it. */
     private static final Object PATH_KEY = new Object();
 
+    /**
+     * The node drawn for {@code path} inside a rendering, or null when nothing is.
+     *
+     * <p>Null is an ordinary answer: a path can address a subterm the layout reassembled away, and a
+     * selection can outlive the value it was made on. The caller shows nothing rather than guessing.
+     *
+     * <p>Deepest match wins. A node and its wrapper can both carry the same address — a fenced
+     * argument is a FenceNode around the term — and highlighting the outer one would include the
+     * brackets in something that is not bracketed.
+     */
+    public static Node nodeAt(Node rendered, List<Integer> path) {
+        Node best = null;
+        for (Node node : descendants(rendered)) {
+            if (path.equals(node.getProperties().get(PATH_KEY)) && (best == null || depthOf(node) > depthOf(best))) {
+                best = node;
+            }
+        }
+        return best;
+    }
+
+    private static int depthOf(Node node) {
+        int depth = 0;
+        for (Node n = node; n != null; n = n.getParent()) {
+            depth++;
+        }
+        return depth;
+    }
+
+    private static List<Node> descendants(Node root) {
+        List<Node> all = new ArrayList<>();
+        all.add(root);
+        if (root instanceof javafx.scene.Parent parent) {
+            for (Node child : parent.getChildrenUnmodifiable()) {
+                all.addAll(descendants(child));
+            }
+        }
+        return all;
+    }
+
     // ------------------------------------------------------------------ dispatch
 
     /** Lay out a subterm whose address is not expressible — see {@link #selectionAt}. */
@@ -173,7 +212,7 @@ public final class MathLayout {
             case "Plus" -> c.arity() >= 2 ? sum(c, style, path) : function(c, style, path);
             // Times is reassembled into a fraction or juxtaposed factors, so its parts are not at any
             // address — see selectionAt. A click inside one selects the whole product.
-            case "Times" -> c.arity() >= 2 ? product(c, style) : function(c, style, path);
+            case "Times" -> c.arity() >= 2 ? product(c, style, path) : function(c, style, path);
             case "Divide" ->
                 c.arity() == 2
                         ? fraction(c.arg(0), c.arg(1), style, at(path, 0), at(path, 1))
@@ -281,15 +320,21 @@ public final class MathLayout {
         return row(style, items);
     }
 
-    private static Node product(Call c, MathStyle style) {
+    private static Node product(Call c, MathStyle style, List<Integer> path) {
         Canonical.Product product = Canonical.splitProduct(c.args());
         List<Expr> numerator = product.numerator().isEmpty() ? List.of(Exprs.ONE) : product.numerator();
+        // The reassembly is a no-op surprisingly often — a plain product of ordinary factors comes back
+        // as exactly its own arguments, in order — and in that case each factor really is at its own
+        // address. Worth detecting, because x*sin(x) inside a function is the commonest shape there is,
+        // and treating it as unaddressable makes the whole feature miss its best case.
+        boolean untouched = !product.negative() && product.denominator().isEmpty() && numerator.equals(c.args());
+        List<Integer> factorPath = untouched ? path : null;
         Node body = product.isFraction()
                 ? new FractionNode(
-                        juxtapose(numerator, style.fractionPart()),
-                        juxtapose(product.denominator(), style.fractionPart()),
+                        juxtapose(numerator, style.fractionPart(), null),
+                        juxtapose(product.denominator(), style.fractionPart(), null),
                         style)
-                : juxtapose(numerator, style);
+                : juxtapose(numerator, style, factorPath);
         return product.negative() ? row(style, op(MINUS, style, Atom.BIN), new Item(body, Atom.ORD)) : body;
     }
 
@@ -299,17 +344,17 @@ public final class MathLayout {
      * <p>A dot is inserted only where juxtaposition would be read as something else — between two
      * numbers, where {@code 2 3} would look like twenty-three.
      */
-    private static Node juxtapose(List<Expr> factors, MathStyle style) {
+    private static Node juxtapose(List<Expr> factors, MathStyle style, List<Integer> path) {
         if (factors.size() == 1) {
-            return layout(factors.get(0), style);
+            return layout(factors.get(0), style, at(path, 0));
         }
         List<Item> items = new ArrayList<>();
         for (int i = 0; i < factors.size(); i++) {
             if (i > 0 && factors.get(i) instanceof Num) {
                 items.add(op("·", style, Atom.BIN));
             }
-            // Factors come from a reassembled product, so none of them is at an address.
-            items.add(item(factors.get(i), style, null));
+            // Addressable only when the product was NOT reassembled — see product().
+            items.add(item(factors.get(i), style, at(path, i)));
         }
         return row(style, items);
     }

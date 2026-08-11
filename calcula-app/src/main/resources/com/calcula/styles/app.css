@@ -398,3 +398,20 @@
     -fx-font-family: monospace;
     -fx-text-fill: -color-accent-fg;
 }
+
+/* ---- selecting part of a formula ----------------------------------------
+ * Hover says what a click would take; the selection says what commands will
+ * act on. Both are washes rather than outlines: an outline changes the size
+ * of what it marks, and a formula that moves when you point at it is
+ * unusable.
+ */
+
+.math-hover {
+    -fx-background-color: -color-bg-subtle;
+    -fx-background-radius: 3;
+}
+
+.math-selected {
+    -fx-background-color: -color-accent-subtle;
+    -fx-background-radius: 3;
+}

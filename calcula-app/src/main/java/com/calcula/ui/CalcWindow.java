@@ -10,7 +10,9 @@ import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
@@ -57,6 +59,7 @@ import com.calcula.machine.Modes;
 import com.calcula.machine.Op;
 import com.calcula.machine.TrailEntry;
 import com.calcula.parse.Formatter;
+import com.calcula.parse.Parser;
 import com.calcula.plot.ExprCompiler;
 import com.calcula.plot.GraphicsScene;
 import com.calcula.plot.PlotAnalysis;
@@ -145,6 +148,18 @@ public final class CalcWindow {
     private final List<String> history = new java.util.ArrayList<>();
 
     private int historyAt;
+
+    /**
+     * The part of a stack entry the user has picked, or null.
+     *
+     * <p>Held as a position and an address rather than as a node, because the cell that drew the node
+     * is RECYCLED — scrolling the stack hands it to another entry, and a remembered node would then
+     * highlight the wrong formula. The address survives a re-render; a node does not.
+     */
+    private Selected selected;
+
+    /** A chosen subterm: which entry, where inside it, and what it was when chosen. */
+    private record Selected(int position, MathLayout.Selection at) {}
 
     private Settings settings;
 
@@ -369,6 +384,19 @@ public final class CalcWindow {
         registry.register("app.settings", "Settings…", "Preferences a new session starts from", settingsDialog::show);
         registry.register("app.quit", "Quit", "Close Calcula", () -> javafx.application.Platform.exit());
         registry.register("help.about", "About Calcula", "Version and licence", this::showAbout);
+        registry.register(
+                "select.widen",
+                "Select enclosing part",
+                "Grow the selection to what contains it",
+                this::widenSelection);
+        registry.register(
+                "select.narrow", "Select inner part", "Shrink the selection to its first part", this::narrowSelection);
+        registry.register("select.clear", "Clear selection", "Select nothing", () -> select(null));
+        registry.register(
+                "select.replace",
+                "Replace selected part…",
+                "Substitute an expression for the selected part",
+                this::replaceSelectedPart);
     }
 
     /**
@@ -515,7 +543,22 @@ public final class CalcWindow {
                 return;
             }
             m.apply(new Op.ReplaceAt(position, rebuilt));
+            followEdit(position, selection.path(), rebuilt);
         });
+    }
+
+    /**
+     * Keep the selection on the part that was just rewritten.
+     *
+     * <p>Without this the selection still remembers what the part USED to be, so a second transform of
+     * the same part — factor it, then simplify it — reports that it has moved and refuses. The address
+     * has not moved; only the value at it has, which is exactly what was asked for.
+     */
+    private void followEdit(int position, List<Integer> path, Expr rebuiltEntry) {
+        Expr now = ExprPath.at(rebuiltEntry, path);
+        if (now != null) {
+            Platform.runLater(() -> select(new Selected(position, new MathLayout.Selection(now, path))));
+        }
     }
 
     ContextMenu trailMenu(TrailEntry entry) {
@@ -651,6 +694,9 @@ public final class CalcWindow {
         keymap.bind("C-,", "app.settings");
         keymap.bind("Cmd-,", "app.settings");
         keymap.bind("C-x C-c", "app.quit");
+        // Widen and narrow, the way an outline moves. Bare arrows are input history.
+        keymap.bind("M-Up", "select.widen");
+        keymap.bind("M-Down", "select.narrow");
     }
 
     private void onKey(KeyEvent event) {
@@ -822,13 +868,22 @@ public final class CalcWindow {
             }
             return false;
         }
+        // Only a BARE arrow is history. M-Up widens the selection, and swallowing it here would make
+        // that chord unreachable without any sign of why.
+        boolean modified = event.isControlDown() || event.isAltDown() || event.isMetaDown() || event.isShiftDown();
         switch (event.getCode()) {
             case UP -> {
+                if (modified) {
+                    return false;
+                }
                 recallHistory(-1);
                 event.consume();
                 return true;
             }
             case DOWN -> {
+                if (modified) {
+                    return false;
+                }
                 recallHistory(1);
                 event.consume();
                 return true;
@@ -979,6 +1034,9 @@ public final class CalcWindow {
                                 ? sceneFor(value)
                                 : MathLayout.render(value, MathStyle.of(mathSize));
                 content.getStyleClass().add("stack-value");
+                int position = stack.size() - getIndex();
+                markSelection(content, position);
+                installSubtermMouse(content, position);
 
                 // Two boxes, because the rail and the formula want opposite alignments and one box
                 // cannot give both. Inside: baseline, so the entry number sits on the formula's own
@@ -1042,6 +1100,222 @@ public final class CalcWindow {
         Label label = new Label(text);
         label.getStyleClass().add("stack-empty-example");
         return label;
+    }
+
+    /**
+     * Draw the selection, if it is in this entry.
+     *
+     * <p>Re-applied on every render because a cell is recycled and rebuilt; the selection lives in the
+     * window, not in the node it happens to be drawn on at the moment.
+     */
+    private void markSelection(Region content, int position) {
+        if (selected == null || selected.position() != position) {
+            return;
+        }
+        content.applyCss();
+        content.layout();
+        Node node = MathLayout.nodeAt(content, selected.at().path());
+        if (node != null) {
+            node.getStyleClass().add("math-selected");
+        }
+    }
+
+    /**
+     * Hovering shows what a click would take; clicking takes it.
+     *
+     * <p>The hover is what makes the selection usable at all — without it you find out what you picked
+     * only after the menu opens, which is the wrong order. It repaints only when the resolved node
+     * CHANGES, so moving across a wide formula is a handful of style-class edits rather than one per
+     * pixel of travel.
+     */
+    private void installSubtermMouse(Region content, int position) {
+        Node[] hovered = new Node[1];
+        content.setOnMouseMoved(e -> {
+            Node under = e.getTarget() instanceof Node n ? nodeForSelection(n) : null;
+            if (under == hovered[0]) {
+                return;
+            }
+            if (hovered[0] != null) {
+                hovered[0].getStyleClass().remove("math-hover");
+            }
+            hovered[0] = under;
+            if (under != null) {
+                under.getStyleClass().add("math-hover");
+            }
+        });
+        content.setOnMouseExited(e -> {
+            if (hovered[0] != null) {
+                hovered[0].getStyleClass().remove("math-hover");
+                hovered[0] = null;
+            }
+        });
+        content.setOnMousePressed(e -> {
+            if (!e.isPrimaryButtonDown()) {
+                return; // a right-click opens the menu and picks its own target
+            }
+            MathLayout.Selection at = e.getTarget() instanceof Node n ? MathLayout.selectionAt(n) : null;
+            select(at == null ? null : new Selected(position, at));
+            e.consume();
+        });
+    }
+
+    /** The node a selection would land on, so hover and click agree about what is under the cursor. */
+    private static Node nodeForSelection(Node target) {
+        for (Node n = target; n != null; n = n.getParent()) {
+            if (MathLayout.selectionAt(n) != null) {
+                return n;
+            }
+        }
+        return null;
+    }
+
+    private void select(Selected next) {
+        selected = next;
+        stackView.refresh();
+        if (next != null) {
+            setStatusNote("selected " + Formatter.format(next.at().expr()));
+        }
+    }
+
+    /**
+     * Grow the selection to the subterm that contains it.
+     *
+     * <p>Walks the address up, which is why an address was worth having beyond rewriting: widening
+     * and narrowing are pure path arithmetic, and the value at each step is looked up rather than
+     * searched for.
+     */
+    private void widenSelection() {
+        withSelection(current -> {
+            List<Integer> up = ExprPath.parent(current.at().path());
+            return up == null ? null : reselect(current, up);
+        });
+    }
+
+    /** Shrink to the first part of the selection — repeated, it walks down the left edge. */
+    private void narrowSelection() {
+        withSelection(current -> reselect(current, ExprPath.child(current.at().path(), 0)));
+    }
+
+    /**
+     * Re-resolve a selection at a new address against the CURRENT value of the entry.
+     *
+     * <p>Looked up rather than remembered: the entry may have been rewritten since it was selected,
+     * and a remembered subterm would then disagree with the address that names it — which is exactly
+     * the mismatch the rewrite path refuses to act on.
+     */
+    private Selected reselect(Selected current, List<Integer> path) {
+        Expr entry = valueAt(current.position());
+        Expr part = entry == null ? null : ExprPath.at(entry, path);
+        return part == null ? null : new Selected(current.position(), new MathLayout.Selection(part, path));
+    }
+
+    private void withSelection(java.util.function.UnaryOperator<Selected> move) {
+        if (selected == null) {
+            noteFromFx("nothing is selected — click a part of a formula first");
+            return;
+        }
+        Selected next = move.apply(selected);
+        if (next == null) {
+            noteFromFx("no further");
+            return;
+        }
+        select(next);
+    }
+
+    /** The value of a stack entry as the window currently shows it, or null. */
+    private Expr valueAt(int position) {
+        int index = stack.size() - position;
+        return index < 0 || index >= stack.size() ? null : stack.get(index);
+    }
+
+    /** Substitute a typed expression for the selected part. */
+    private void replaceSelectedPart() {
+        if (selected == null) {
+            noteFromFx("nothing is selected — click a part of a formula first");
+            return;
+        }
+        Selected target = selected;
+        promptText("Replace", "Replace " + Formatter.format(target.at().expr()) + " with", "", typed -> {
+            Expr replacement;
+            try {
+                replacement = Parser.parse(typed);
+            } catch (RuntimeException e) {
+                noteFromFx("could not read that: " + describe(e));
+                return;
+            }
+            substitutePart(target, replacement);
+        });
+    }
+
+    /**
+     * Ask for one line of text, in the same overlay everything else uses.
+     *
+     * <p>{@code onAccept} runs AFTER the card is hidden, so focus is already back in the input line —
+     * a callback that opens something of its own is not fighting an overlay that is still up.
+     */
+    private void promptText(String title, String label, String initial, Consumer<String> onAccept) {
+        TextField field = new TextField(initial);
+        field.getStyleClass().add("palette-input");
+        Button ok = new Button("OK");
+        Button cancel = new Button("Cancel");
+        ok.setDefaultButton(true);
+        cancel.setCancelButton(true);
+        HBox buttons = new HBox(8, cancel, ok);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+
+        Label heading = new Label(title);
+        heading.getStyleClass().add("settings-title");
+        Label prompt = new Label(label);
+        prompt.getStyleClass().add("settings-note");
+        VBox card = new VBox(heading, prompt, field, buttons);
+        card.getStyleClass().add("settings-card");
+        card.setPrefWidth(420);
+        card.setMaxWidth(Region.USE_PREF_SIZE);
+        card.setMaxHeight(Region.USE_PREF_SIZE);
+
+        String[] accepted = new String[1];
+        Runnable accept = () -> {
+            accepted[0] = field.getText();
+            overlays.hide();
+        };
+        ok.setOnAction(e -> accept.run());
+        cancel.setOnAction(e -> overlays.hide());
+        field.setOnAction(e -> accept.run());
+
+        overlays.show(card, field::requestFocus, () -> {
+            if (accepted[0] != null && !accepted[0].isBlank()) {
+                onAccept.accept(accepted[0].trim());
+            }
+        });
+    }
+
+    /**
+     * Put {@code replacement} where the selected part is.
+     *
+     * <p>Shares {@link #rewritePart}'s guard: the address is re-checked against what was selected, so
+     * a selection that has gone stale reports itself instead of overwriting whatever now sits there.
+     */
+    private void substitutePart(Selected target, Expr replacement) {
+        onMachine(m -> {
+            Expr entry = m.state().at(target.position());
+            Expr current = ExprPath.at(entry, target.at().path());
+            if (current == null || !current.equals(target.at().expr())) {
+                m.record(new TrailEntry(TrailEntry.Kind.NOTE, "that part has moved; nothing was changed"));
+                return;
+            }
+            Expr rebuilt = ExprPath.replace(entry, target.at().path(), replacement);
+            if (rebuilt == null) {
+                m.record(new TrailEntry(TrailEntry.Kind.NOTE, "could not substitute there"));
+                return;
+            }
+            m.apply(new Op.ReplaceAt(target.position(), rebuilt));
+            followEdit(target.position(), target.at().path(), rebuilt);
+        });
+    }
+
+    /** A one-line note in the echo area, without going near the machine. */
+    private void setStatusNote(String message) {
+        noteFromFx(message);
     }
 
     private void buildTrail() {
@@ -1160,6 +1434,21 @@ public final class CalcWindow {
                 .map(com.calcula.parse.Functions.Doc::name)
                 .distinct()
                 .toList();
+    }
+
+    /** Visible for tests: pick a part of an entry, as a click would. */
+    public void selectPart(int position, Expr part, List<Integer> path) {
+        select(new Selected(position, new MathLayout.Selection(part, path)));
+    }
+
+    /** Visible for tests: what is selected, formatted, or null. */
+    public String selectedPart() {
+        return selected == null ? null : Formatter.format(selected.at().expr());
+    }
+
+    /** Visible for tests: the address of the selection, or null. */
+    public List<Integer> selectedPath() {
+        return selected == null ? null : selected.at().path();
     }
 
     /** Visible for tests: the mode line, as it reads. */

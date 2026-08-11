@@ -43,6 +43,35 @@ class SurfaceSampleFxTest {
     }
 
     @Test
+    void aSelectedPartRenders() throws Exception {
+        // Look at it: the selection has to be visible enough to know what a command will act on, and
+        // subtle enough not to fight the formula it is inside.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        Region root = window.getRoot();
+        FxTestSupport.runOnFx(() -> {
+            Scene scene = new Scene(root, 980, 660);
+            Themes.apply(scene, Themes.byName(window.settings().themeId()));
+            root.applyCss();
+            root.layout();
+            window.submit("integrate(x*sin(x), x)");
+        });
+        FxTestSupport.waitFor("the entry", 5000, () -> !window.stackContents().isEmpty());
+        FxTestSupport.runOnFx(
+                () -> window.selectPart(1, com.calcula.parse.Parser.parse("sin(x)"), java.util.List.of(0, 1)));
+        FxTestSupport.runOnFx(() -> {
+            root.applyCss();
+            root.layout();
+        });
+        WritableImage image = FxTestSupport.callOnFx(() -> root.snapshot(new SnapshotParameters(), null));
+        javax.imageio.ImageIO.write(
+                javafx.embed.swing.SwingFXUtils.fromFXImage(image, null),
+                "png",
+                new File("target/selection-sample.png"));
+        System.out.println("WROTE target/selection-sample.png");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
     void thePaletteRenders() throws Exception {
         snapshot("palette-sample.png", "app.palette");
     }

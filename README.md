@@ -189,6 +189,36 @@ Both writers emit from the tree rather than through the engine. `TeXForm` produc
 than an `<mtable>` and prepends a DOCTYPE that has to be stripped. Writing them here also
 means copying works with no engine loaded.
 
+### Operating on part of an answer
+
+Click any part of a rendered formula and it highlights; hovering shows what a click would take.
+`M-Up` and `M-Down` widen and narrow the selection through the expression tree, and the right-click
+**Rewrite** menu transforms just that part back into the answer around it:
+
+```
+sqrt(1 - x^2) + arcsin(x)     select 1 - x^2, Rewrite > Factor
+sqrt((1 - x)*(1 + x)) + arcsin(x)
+```
+
+There is no way to express that by retyping, and it is the one thing a CAS shell structurally cannot
+offer. Extract, Copy and Plot work on the selected part too.
+
+The subtlety is that **a rendering does not mirror its tree**. Canonical forms are reassembled for
+display — a fraction synthesised from `Times`, a radical from `Power(x, 1/2)`, a minus lifted out of
+a coefficient — so a node can show a subterm that is at no address at all. In `a - b` the second
+term is drawn as `b` after a lifted minus, while argument 1 holds `Times(-1, b)`; claiming an
+address there would rewrite the sign away.
+
+So a node carries an address only when the thing displayed **is** the thing addressed, and
+`selectionAt` walks past synthesised nodes to the nearest genuine ancestor. Expr and path come from
+the same node, so they agree by construction. `SelectionAddressFxTest` renders fifteen formulas
+covering every reassembly case and walks every node of each, because a mismatch would not throw — it
+would quietly rewrite the wrong part of someone's answer.
+
+`Times` is the exception worth making: a plain product of ordinary factors reassembles to exactly
+its own arguments, and `x*sin(x)` inside a function is the commonest shape there is, so that case is
+detected and stays addressable.
+
 ### Four ways in, one set of commands
 
 A menu bar, a command palette (`M-x`), settings, and right-click menus — all of them **views of
