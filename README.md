@@ -55,25 +55,50 @@ jar, restart. See `NOTICE`.
 
 ## Status
 
-Scaffolding. Verified working end to end: the modular app loads the non-modular Symja tree, evaluates
-through it, and returns exact results (`1/2 + 1/3` → `5/6`, `∫√(1-x²)dx` → `x√(1-x²)/2 + arcsin(x)/2`),
-plus TeX and presentation-MathML output.
+Foundation complete and green (154 tests). The layers, innermost first:
 
-Not built yet, in intended order:
+| Package | What it is |
+|---|---|
+| `expr` | Sealed tree — number, symbol, call — plus exact arithmetic over Int/Rat/Flt |
+| `parse` | Lexer, precedence-climbing parser, precedence-aware formatter, name table |
+| `machine` | Immutable `CalcState`, the `Op` vocabulary, trail, undo, `Evaluator` |
+| `input` | `Reader` — RPN and algebraic, over the same Ops |
+| `command` / `key` | Registry and prefix-chord dispatcher, both toolkit-free |
+| `cas` + `calcula-cas-symja` | The engine seam and its Symja implementation |
+| `ui` | Window, chord translation |
 
-1. `Expr` tree + parser + linear formatter — pure, unit-tested. Keep it **structurally identical** to
-   Symja's shape (atom | symbol | `Call(String head, List<Expr>)` | list) so conversion is total and a
-   head we never modelled round-trips as a generic `Call`.
-2. Stack machine (immutable `CalcState`, undo as a bounded deque) + prefix keymap engine.
-3. Native math layout: one JavaFX `Node` per subexpression, so selection mode (`j`) can hit-test a
-   subterm. Needs TeX's rules to look right — math italic vs upright, the 100/70/50 script cascade,
-   spacing by operator class. Stretchy delimiters as `Path`, since JavaFX can't read OpenType MATH.
-4. Plotting: render Symja's returned `Graphics` primitives on a `Canvas` for static plots; compile
-   `Expr` → `DoubleUnaryOperator` for interactive pan/zoom (CAS eval is 0.38 ms/point — far too slow
-   for a frame).
-5. Multi-flavour clipboard: MathML + LaTeX + PNG on one copy.
-6. Packaging (`-Pdist`): moditect for the app's own few automatic modules, jpackage, AOT training, and
-   a step that stages `cas/*.jar` into the app image beside the launcher.
+Everything below `ui` is toolkit-free and unit-tested.
+
+Verified end to end against the real engine:
+
+```
+1/2 + 1/3                    -> 5/6
+integrate(x*sin(x), x)       -> -x*cos(x) + sin(x)
+deriv($, x)                  -> x*sin(x)          # $ takes the integral off the stack
+solve(x^2 = 4, x)            -> [[x -> -2], [x -> 2]]
+x^2 x deriv 3 *              -> 6*x               # the same thing in RPN
+```
+
+### Still open
+
+**Which input model is the default.** Deliberately undecided. Both readers work,
+`input.toggleModel` (`M-i`) switches at runtime, and a test pins that `5 3 -` and
+`5 - 3` reach identical states. Algebraic is the provisional start.
+
+### Not built yet, in intended order
+
+1. Native math layout: one JavaFX `Node` per subexpression, so selection mode (`j`)
+   can hit-test a subterm. Needs TeX's rules to look right — math italic vs upright,
+   the 100/70/50 script cascade, spacing by operator class. Stretchy delimiters as
+   `Path`, since JavaFX cannot read OpenType MATH.
+2. Plotting: render Symja's returned `Graphics` primitives on a `Canvas`; compile
+   `Expr` → `DoubleUnaryOperator` for interactive pan/zoom (CAS eval is 0.38 ms/point,
+   far too slow for a frame).
+3. Multi-flavour clipboard: MathML + LaTeX + PNG on one copy.
+4. Modes actually wired to commands (angle, precision) — the model exists, the
+   commands do not.
+5. Packaging (`-Pdist`): moditect for the app's own few automatic modules, jpackage,
+   AOT training, and staging `cas/*.jar` into the app image beside the launcher.
 
 ## Notes
 
