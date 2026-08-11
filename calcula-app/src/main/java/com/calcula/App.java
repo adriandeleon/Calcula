@@ -1,15 +1,19 @@
 package com.calcula;
 
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javafx.application.Application;
 import javafx.scene.Scene;
+import javafx.scene.image.Image;
 import javafx.stage.Stage;
 
-import atlantafx.base.theme.PrimerDark;
 import com.calcula.cas.CasEngineLoader;
 import com.calcula.ui.CalcWindow;
+import com.calcula.ui.Themes;
 
 /** Entry point. */
 public final class App extends Application {
@@ -31,14 +35,17 @@ public final class App extends Application {
 
     @Override
     public void start(Stage stage) {
-        Application.setUserAgentStylesheet(new PrimerDark().getUserAgentStylesheet());
-
         window = new CalcWindow();
         Scene scene = new Scene(window.getRoot(), 980, 660);
-        scene.getStylesheets().add(App.class.getResource("styles/app.css").toExternalForm());
+
+        // Owns the load order: Primer (user agent) -> theme tokens -> app.css. app.css is written
+        // entirely in -color-*/-calc-* tokens, so applying it before the sheet that defines them
+        // leaves every colour unresolved and the window renders in JavaFX's defaults.
+        Themes.apply(scene, Themes.DEFAULT);
 
         stage.setTitle(window.title());
         stage.setScene(scene);
+        stage.getIcons().addAll(icons());
         stage.show();
         window.focusInput();
 
@@ -50,6 +57,31 @@ public final class App extends Application {
                     LOG.log(Level.WARNING, "CAS load failed", t);
                     return null;
                 });
+    }
+
+    /**
+     * The window icons, largest first.
+     *
+     * <p>Rasters rather than the SVG master: the master sets the integral as text and so depends on
+     * a math font being installed, which is precisely the failure this avoids. The 16 and 24 px
+     * entries are the reduced mark — the integral alone — because below 32 px the stack rules turn
+     * into a smudge.
+     *
+     * <p>Best-effort. A missing icon is a packaging fault and leaves the OS default in place; it is
+     * not worth refusing to open a window over.
+     */
+    private static List<Image> icons() {
+        List<Image> loaded = new ArrayList<>();
+        for (int size : new int[] {512, 256, 128, 64, 48, 32, 24, 16}) {
+            try (InputStream in = App.class.getResourceAsStream("icons/calcula-" + size + ".png")) {
+                if (in != null) {
+                    loaded.add(new Image(in));
+                }
+            } catch (Exception e) {
+                LOG.log(Level.FINE, "icon " + size + " unavailable", e);
+            }
+        }
+        return loaded;
     }
 
     @Override

@@ -1,0 +1,51 @@
+/*
+ * Rule & Plate — "Slab", the dark theme.
+ *
+ * The twin of plate.css. See that file for why this is an override sheet rather than a control
+ * theme, and for what each token means.
+ *
+ * Not an inversion. The dark steps are chosen against the slab ground rather than derived by
+ * flipping the light ones: an accent that reads well on #f6f7f9 is too dark on #14171c, and a
+ * naive flip is how a dark theme ends up with a muddy accent and unreadable status colours.
+ */
+
+.root {
+
+    /* -- grounds ---------------------------------------------------------- */
+    -color-bg-default: #14171c;   /* slab: the window, the stack, the echo area */
+    -color-bg-subtle:  #1b1f26;   /* panel: the trail and the mode line         */
+    -color-bg-inset:   #101317;
+
+    /* -- ink -------------------------------------------------------------- */
+    -color-fg-default: #e4e8ee;   /* chalk: stack values, typed input           */
+    -color-fg-muted:   #99a2b1;
+    -color-fg-subtle:  #6a7383;
+
+    /* -- rules ------------------------------------------------------------ */
+    -color-border-default: #2c323b;
+    -color-border-muted:   #232830;
+
+    /* -- state language (see plate.css) ------------------------------------ */
+    -color-accent-fg:      #6ba6e8;
+    -color-accent-emphasis:#8bbcf0;
+    -color-accent-subtle:  #22344a;
+    -color-accent-muted:   #35507040;
+
+    -color-success-fg:     #54bd8e;
+    -color-success-subtle: #16311f;
+
+    -color-danger-fg:      #ef7167;
+    -color-danger-subtle:  #3a1c1b;
+
+    -color-warning-fg:     #d9a441;
+    -color-warning-subtle: #33291a;
+
+    -calc-inexact:        #d9a441;
+    -calc-inexact-subtle: #33291a;
+
+    /* Stepped for the dark ground, not brightened from the light set. */
+    -calc-series-1: #4a90e2;
+    -calc-series-2: #12a894;
+    -calc-series-3: #9a6fe0;
+    -calc-series-4: #e05a80;
+}

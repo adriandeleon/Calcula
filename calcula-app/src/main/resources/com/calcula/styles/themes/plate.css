@@ -1,0 +1,72 @@
+/*
+ * Rule & Plate — "Plate", the light theme.
+ *
+ * This is an OVERRIDE sheet, not a control theme. AtlantaFX's Primer stays the user-agent
+ * stylesheet and keeps styling every standard control; all this does is redefine the semantic
+ * -color-* tokens it resolves against. A scene stylesheet outranks the user-agent stylesheet, so
+ * .root here wins and the whole window re-colours without a single component rule being restated.
+ *
+ * The reference is a plate in a mathematics monograph: cool paper, engineered spacing, and rules
+ * drawn only where a rule carries meaning. The neutrals are biased blue, not warm — a sepia
+ * notebook is the wrong register for a CAS.
+ */
+
+.root {
+
+    /* -- grounds ---------------------------------------------------------- */
+    -color-bg-default: #f6f7f9;   /* plate: the window, the stack, the echo area */
+    -color-bg-subtle:  #eceef2;   /* panel: the trail and the mode line          */
+    -color-bg-inset:   #e4e7ec;
+
+    /* -- ink -------------------------------------------------------------- */
+    -color-fg-default: #1b1f27;   /* graphite: stack values, typed input         */
+    -color-fg-muted:   #5c6472;   /* trail text, mode flags that are on          */
+    -color-fg-subtle:  #8b93a1;   /* stack index, notes                          */
+
+    /* -- rules ------------------------------------------------------------ */
+    -color-border-default: #d5dae1;
+    -color-border-muted:   #e2e6eb;
+
+    /*
+     * -- state language ----------------------------------------------------
+     * Each of these means exactly one thing, everywhere it appears. Reference the token; never
+     * restate the hex at the call site, or the meaning drifts the first time one is tuned.
+     */
+    -color-accent-fg:      #2563a8;  /* azure: what came back. Results, prompt, selection */
+    -color-accent-emphasis:#1f5596;
+    -color-accent-subtle:  #d3e3f5;
+    -color-accent-muted:   #a9c8e8;
+
+    -color-success-fg:     #2c7355;  /* verdigris: the engine is here */
+    -color-success-subtle: #d6ece0;
+
+    -color-danger-fg:      #b3392c;  /* vermilion: why nothing came back */
+    -color-danger-subtle:  #f5dcd9;
+
+    -color-warning-fg:     #9a6a10;
+    -color-warning-subtle: #f6ecd6;
+
+    /*
+     * Amber. Not exact, or not finished.
+     *
+     * The distinction no other calculator surfaces: 5/6 is exact ink, 0.833333333333 is amber in
+     * the gutter. The same colour marks a half-entered chord, because C-x- is likewise a value
+     * that has not settled. Modes already models the POLICY (symbolic, fractions); this reports
+     * the VALUE, which nothing did before.
+     *
+     * It is its own token rather than an alias of -color-warning-fg because an inexact number is
+     * not a warning, and the day one of the two needs tuning it must not drag the other with it.
+     */
+    -calc-inexact:        #9a6a10;
+    -calc-inexact-subtle: #f6ecd6;
+
+    /* -- plot series -------------------------------------------------------
+     * Assigned in fixed order and never cycled. Validated for colour-vision separation against
+     * the plate ground. Vermilion, verdigris and amber are deliberately absent: they are status
+     * colours, and a series that borrows one makes both unreadable.
+     */
+    -calc-series-1: #2563a8;
+    -calc-series-2: #0e9488;
+    -calc-series-3: #8b45d6;
+    -calc-series-4: #c4356b;
+}

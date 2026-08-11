@@ -54,6 +54,20 @@ jar, restart. See `NOTICE`.
 - `com.calcula.cas` must be exported **unqualified** — the unnamed module cannot read a qualified
   `exports ... to`, and the failure looks like a missing jar rather than a missing export.
 
+## Design
+
+The visual language is **Rule & Plate** — two themes (`Plate` light, `Slab` dark), a six-colour state
+language, and a three-face type system. See [docs/design.md](docs/design.md).
+
+Two things there are load-bearing and easy to undo by accident:
+
+- `Themes.apply` owns the stylesheet order — **Primer → theme tokens → `app.css`**. `app.css` is
+  written entirely in `-color-*`/`-calc-*` tokens, so applying it before the sheet that defines them
+  leaves every colour unresolved.
+- The stack's amber gutter marker uses `Exprs.containsInexact`, **not** `!isExact`. The latter is
+  shallow and answers false for every `Call`, so negating it marks every symbolic result the CAS
+  returns as approximate.
+
 ## Status
 
 Foundation complete and green (154 tests). The layers, innermost first:
@@ -66,7 +80,7 @@ Foundation complete and green (154 tests). The layers, innermost first:
 | `input` | `Reader` — RPN and algebraic, over the same Ops |
 | `command` / `key` | Registry and prefix-chord dispatcher, both toolkit-free |
 | `cas` + `calcula-cas-symja` | The engine seam and its Symja implementation |
-| `ui` | Window, chord translation |
+| `ui` | Window, chord translation, the Rule & Plate themes |
 | `ui.math` | Expr → JavaFX nodes: real two-dimensional typeset mathematics |
 
 Everything below `ui` is toolkit-free and unit-tested.
