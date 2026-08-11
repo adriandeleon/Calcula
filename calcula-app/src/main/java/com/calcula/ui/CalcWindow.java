@@ -1,6 +1,5 @@
 package com.calcula.ui;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,6 +28,7 @@ import com.calcula.cas.CasEngineLoader;
 import com.calcula.cas.CasException;
 import com.calcula.command.CommandRegistry;
 import com.calcula.expr.Expr;
+import com.calcula.expr.Exprs;
 import com.calcula.input.AlgebraicReader;
 import com.calcula.input.Reader;
 import com.calcula.input.RpnReader;
@@ -69,11 +69,20 @@ public final class CalcWindow {
     /** Point size for rendered stack entries. */
     private static final double STACK_MATH_SIZE = 17;
 
+    /**
+     * Space between the stack's gutter rail and the entry number.
+     *
+     * <p>The cell's own left padding is zero so the rail can sit flush against the edge, so this is
+     * what stands in for it — 3 px of rail plus this gap lands the number where the old 12 px
+     * padding used to put it.
+     */
+    private static final double GUTTER_GAP = 8;
+
     private final BorderPane root = new BorderPane();
     private final ObservableList<Expr> stack = FXCollections.observableArrayList();
-    private final ObservableList<String> trailLines = FXCollections.observableArrayList();
+    private final ObservableList<TrailEntry> trailLines = FXCollections.observableArrayList();
     private final ListView<Expr> stackView = new ListView<>(stack);
-    private final ListView<String> trailView = new ListView<>(trailLines);
+    private final ListView<TrailEntry> trailView = new ListView<>(trailLines);
     private final Label modes = new Label();
     private final Label engineStatus = new Label("CAS: loading…");
     private final Label prompt = new Label("›");
@@ -234,9 +243,9 @@ public final class CalcWindow {
             event.consume();
         }
         if (result.outcome() == KeyDispatcher.Outcome.PENDING) {
-            prompt.setText(result.sequence() + "-");
+            setPrompt(result.sequence() + "-", true);
         } else if (result.outcome() != KeyDispatcher.Outcome.RAN) {
-            prompt.setText("›");
+            setPrompt("›", false);
         }
     }
 
@@ -256,37 +265,65 @@ public final class CalcWindow {
                 machine.recordError(describe(e));
             }
             CalcState snapshot = machine.state();
-            List<String> trail = renderTrail(machine.trail());
+            // Copied here, on the worker, so the FX thread never reads the machine.
+            List<TrailEntry> trail = List.copyOf(machine.trail());
             Platform.runLater(() -> publish(snapshot, trail));
         });
+    }
+
+    /**
+     * The prompt is the status indicator.
+     *
+     * <p>With no toolbar and no dialogs, the one glyph the eye is already resting on carries the
+     * machine's state: ready, working, prefix held, failed. Text and style move together here so
+     * the two cannot drift — a pending sequence left showing in the ready colour reads as an
+     * ordinary prompt with junk in it.
+     */
+    private void setPrompt(String text, boolean pending) {
+        prompt.setText(text);
+        prompt.getStyleClass().remove("pending");
+        if (pending) {
+            prompt.getStyleClass().add("pending");
+        }
     }
 
     private void machineOp(Op op) {
         onMachine(m -> m.apply(op));
     }
 
-    private void publish(CalcState snapshot, List<String> trail) {
+    private void publish(CalcState snapshot, List<TrailEntry> trail) {
         stack.setAll(snapshot.stack());
         trailLines.setAll(trail);
         if (!trailLines.isEmpty()) {
             trailView.scrollTo(trailLines.size() - 1);
         }
         refreshModeLine();
-        prompt.setText("›");
+        setPrompt("›", false);
     }
 
-    private static List<String> renderTrail(List<TrailEntry> entries) {
-        List<String> lines = new ArrayList<>(entries.size());
-        for (TrailEntry entry : entries) {
-            lines.add(
-                    switch (entry.kind()) {
-                        case INPUT -> entry.text();
-                        case RESULT -> "  = " + entry.text();
-                        case ERROR -> "  ! " + entry.text();
-                        case NOTE -> "  · " + entry.text();
-                    });
-        }
-        return lines;
+    /**
+     * One trail line as it is displayed.
+     *
+     * <p>The sigil is added here rather than at the point of recording, so {@link TrailEntry} keeps
+     * carrying its kind as data — which is what lets {@link #trailCellClass} colour it.
+     */
+    private static String renderTrail(TrailEntry entry) {
+        return switch (entry.kind()) {
+            case INPUT -> entry.text();
+            case RESULT -> "  = " + entry.text();
+            case ERROR -> "  ! " + entry.text();
+            case NOTE -> "  · " + entry.text();
+        };
+    }
+
+    /** The state-language class for a trail line. See the trail rules in {@code app.css}. */
+    private static String trailCellClass(TrailEntry entry) {
+        return switch (entry.kind()) {
+            case INPUT -> "trail-input";
+            case RESULT -> "trail-result";
+            case ERROR -> "trail-error";
+            case NOTE -> "trail-note";
+        };
     }
 
     private static String describe(RuntimeException e) {
@@ -303,7 +340,7 @@ public final class CalcWindow {
             return;
         }
         input.clear();
-        prompt.setText("…");
+        setPrompt("…", false);
         Reader current = reader;
         onMachine(m -> {
             m.recordInput(text);
@@ -336,18 +373,45 @@ public final class CalcWindow {
                     setText(null);
                     return;
                 }
+                // A CAS spends its life moving between exact and approximate. Modes reports the
+                // POLICY (symbolic, fractions); nothing reported the VALUE. One Flt anywhere in
+                // the tree contaminates it, so this is containsInexact and not !isExact — the
+                // latter is shallow and would mark every symbolic result approximate.
+                boolean inexact = Exprs.containsInexact(value);
+
+                // Always present, usually transparent: a value acquiring a marker must not shift
+                // the text beside it.
+                Region gutter = new Region();
+                gutter.getStyleClass().add("stack-gutter");
+
                 Label index = new Label((stack.size() - getIndex()) + ":");
                 index.getStyleClass().add("stack-index");
                 index.setMinWidth(38);
                 index.setAlignment(Pos.CENTER_RIGHT);
 
+                if (inexact) {
+                    gutter.getStyleClass().add("inexact");
+                    index.getStyleClass().add("inexact");
+                }
+
                 Region content = MathLayout.render(value, MathStyle.of(STACK_MATH_SIZE));
                 content.getStyleClass().add("stack-value");
 
-                HBox row = new HBox(10, index, content);
-                // Baseline, not centre: the entry number should sit on the formula's own baseline,
-                // which for a fraction is nowhere near its middle.
-                row.setAlignment(Pos.BASELINE_LEFT);
+                // Two boxes, because the rail and the formula want opposite alignments and one box
+                // cannot give both. Inside: baseline, so the entry number sits on the formula's own
+                // baseline — which for a fraction is nowhere near its middle. Outside: fill height,
+                // so the rail spans the row however tall the formula turns out to be.
+                //
+                // A rail in the BASELINE_LEFT box would vanish: a plain Region reports
+                // BASELINE_OFFSET_SAME_AS_HEIGHT, so it gets aligned by its own box and, with no
+                // content to give it height, draws nothing.
+                HBox formula = new HBox(10, index, content);
+                formula.setAlignment(Pos.BASELINE_LEFT);
+                HBox.setHgrow(formula, Priority.ALWAYS);
+
+                HBox row = new HBox(GUTTER_GAP, gutter, formula);
+                row.setFillHeight(true);
+                HBox.setHgrow(gutter, Priority.NEVER); // a fixed rail, not a flexible column
                 setGraphic(row);
                 setText(null);
             }
@@ -365,6 +429,22 @@ public final class CalcWindow {
     private void buildTrail() {
         trailView.getStyleClass().add("trail-view");
         trailView.setPlaceholder(new Label("trail"));
+        trailView.setCellFactory(v -> new ListCell<>() {
+            @Override
+            protected void updateItem(TrailEntry entry, boolean empty) {
+                super.updateItem(entry, empty);
+                // A recycled cell keeps the class from whatever it showed last, so every kind has
+                // to be cleared before the current one is added — otherwise scrolling smears the
+                // colours down the list.
+                getStyleClass().removeAll("trail-input", "trail-result", "trail-error", "trail-note");
+                if (empty || entry == null) {
+                    setText(null);
+                    return;
+                }
+                setText(renderTrail(entry));
+                getStyleClass().add(trailCellClass(entry));
+            }
+        });
     }
 
     private Region buildModeLine() {
@@ -403,9 +483,9 @@ public final class CalcWindow {
         return stack.stream().map(Formatter::format).toList();
     }
 
-    /** Visible for tests: the trail as it is displayed. */
+    /** Visible for tests: the trail as it is displayed, sigils included. */
     public List<String> trailContents() {
-        return List.copyOf(trailLines);
+        return trailLines.stream().map(CalcWindow::renderTrail).toList();
     }
 
     /** Visible for tests: drive the echo area without a robot. */

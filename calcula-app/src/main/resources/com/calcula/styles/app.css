@@ -1,13 +1,43 @@
 /*
- * Calcula chrome. Colours come from AtlantaFX's semantic -color-* variables rather than literals, so
- * the whole window follows a theme switch without a per-theme override file.
+ * Calcula chrome — Rule & Plate.
+ *
+ * Every colour here is a semantic -color-* (or -calc-*) token defined by the active theme sheet,
+ * never a literal. That is what lets plate.css and slab.css re-colour the whole window without a
+ * single rule below being touched. If a rule needs a colour the tokens cannot express, add the
+ * token to BOTH theme sheets rather than a hex here.
+ *
+ * Load order is owned by Themes.apply(): Primer (user agent) -> theme tokens -> this file.
+ *
+ * -- Three faces, one job each -------------------------------------------------------------
+ *
+ * The stack is set in a SERIF with a true math italic. Monospace is wrong for mathematics: it has
+ * no real italic, and a fixed advance width destroys the spacing that carries meaning (a binary
+ * operator wants more air than a function applied to its argument). The trail and echo area keep
+ * monospace, because a log wants its sigils in a column and the echo area is a text field being
+ * edited character by character. The mode line is chrome and takes the UI sans.
+ *
+ * The families are named with full fallback chains and are NOT yet bundled, so on a machine with
+ * none of them installed the stack still lands on a serif rather than on nothing. Bundling the
+ * three faces as resources is the follow-up; until then the chain is load-bearing.
  */
+
+.root {
+    -calc-math-face:  "STIX Two Text", "STIX Two Math", "Cambria Math", "Palatino", "Iowan Old Style", Georgia, serif;
+    -calc-mono-face:  "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
+    -calc-chrome-face: "Inter", "SF Pro Text", "Segoe UI", "Helvetica Neue", sans-serif;
+}
 
 .calc-root {
     -fx-background-color: -color-bg-default;
 }
 
-/* ---- stack ------------------------------------------------------------- */
+/* ---- stack --------------------------------------------------------------
+ *
+ * Bottom-aligned: entry 1: is the TOP of the stack and Calcula draws it nearest the input, the way
+ * Emacs Calc does. Rows are loose (the stack is scanned down a column of values); the trail below
+ * is tight (it is skimmed for a landmark, then read backwards). Two different jobs, two different
+ * densities — deliberately not one shared number.
+ */
 
 .stack-view {
     -fx-background-color: -color-bg-default;
@@ -16,26 +46,53 @@
 
 .stack-view .list-cell {
     -fx-background-color: transparent;
-    -fx-padding: 3 12 3 12;
+    -fx-padding: 3 12 3 0;
 }
 
 .stack-view .list-cell:selected {
     -fx-background-color: -color-accent-subtle;
 }
 
+/*
+ * The gutter strip: a 3px rail down the left of every row, before the index.
+ *
+ * Metadata lives here so the value itself stays clean — the same division an editor makes between
+ * its gutter and its text. It is always present and usually transparent, so a value acquiring a
+ * marker never shifts the text beside it.
+ */
+.stack-gutter {
+    -fx-min-width: 3;
+    -fx-pref-width: 3;
+    -fx-max-width: 3;
+    -fx-background-color: transparent;
+}
+
+/* Not exact. One Flt anywhere in the tree is enough — see Exprs.containsInexact. */
+.stack-gutter.inexact {
+    -fx-background-color: -calc-inexact;
+}
+
 .stack-index {
-    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
-    -fx-font-size: 12px;
-    -fx-text-fill: -color-fg-muted;
+    -fx-font-family: -calc-mono-face;
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-subtle;
+}
+
+.stack-index.inexact {
+    -fx-text-fill: -calc-inexact;
 }
 
 .stack-value {
-    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
-    -fx-font-size: 14px;
+    -fx-font-family: -calc-math-face;
+    -fx-font-size: 17px;
     -fx-text-fill: -color-fg-default;
 }
 
-/* ---- trail ------------------------------------------------------------- */
+/* ---- trail --------------------------------------------------------------
+ *
+ * TrailEntry carries its kind separately from its text precisely so the view can style it, rather
+ * than the machine baking "= " into the string. These four rules are that intent, honoured.
+ */
 
 .trail-view {
     -fx-background-color: -color-bg-subtle;
@@ -44,25 +101,46 @@
 
 .trail-view .list-cell {
     -fx-background-color: transparent;
-    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+    -fx-font-family: -calc-mono-face;
     -fx-font-size: 11px;
     -fx-text-fill: -color-fg-muted;
     -fx-padding: 1 10 1 10;
 }
 
-/* ---- mode line --------------------------------------------------------- */
+/* What you said. The baseline everything else is measured against. */
+.trail-input {
+    -fx-text-fill: -color-fg-muted;
+}
+
+/* What came back. */
+.trail-result {
+    -fx-text-fill: -color-accent-fg;
+}
+
+/* Why nothing came back. */
+.trail-error {
+    -fx-text-fill: -color-danger-fg;
+}
+
+/* The calculator talking about itself — findable, not noticed. */
+.trail-note {
+    -fx-text-fill: -color-fg-subtle;
+    -fx-font-style: italic;
+}
+
+/* ---- mode line ---------------------------------------------------------- */
 
 .mode-line {
     -fx-background-color: -color-bg-subtle;
     -fx-border-color: -color-border-default;
     -fx-border-width: 1 0 1 0;
-    -fx-padding: 3 12 3 12;
+    -fx-padding: 4 12 4 12;
 }
 
 .mode-item {
-    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+    -fx-font-family: -calc-chrome-face;
     -fx-font-size: 11px;
-    -fx-text-fill: -color-fg-muted;
+    -fx-text-fill: -color-fg-subtle;
 }
 
 .cas-ok {
@@ -73,22 +151,34 @@
     -fx-text-fill: -color-danger-fg;
 }
 
-/* ---- echo area --------------------------------------------------------- */
+/* ---- echo area ----------------------------------------------------------
+ *
+ * No border, no focus ring, transparent ground: it is a line of the page, not a widget sitting on
+ * it. The prompt is the status indicator — the one glyph the eye is already resting on — so it
+ * carries ready / working / pending-chord / failed rather than adding chrome elsewhere.
+ */
 
 .echo-area {
     -fx-background-color: -color-bg-default;
-    -fx-padding: 6 12 8 12;
+    -fx-padding: 8 12 10 12;
 }
 
 .echo-prompt {
-    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+    -fx-font-family: -calc-mono-face;
     -fx-font-size: 15px;
     -fx-text-fill: -color-accent-fg;
 }
 
+/* A half-entered chord is a value that has not settled — the same meaning as an inexact number. */
+.echo-prompt.pending {
+    -fx-text-fill: -calc-inexact;
+    -fx-font-weight: bold;
+}
+
 .echo-input {
-    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+    -fx-font-family: -calc-mono-face;
     -fx-font-size: 14px;
+    -fx-text-fill: -color-fg-default;
     -fx-background-color: transparent;
     -fx-border-width: 0;
     -fx-padding: 2 0 2 0;

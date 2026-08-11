@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     role="img" aria-label="Calcula">
+  <title>Calcula</title>
+  <desc>Reduced mark for 24px and below: the integral alone, in accent.</desc>
+  <!--
+    Below 32px the rules stop resolving and turn into a smudge, so they are dropped and
+    the integral takes the accent colour: a single-element mark should carry the brand
+    colour rather than sit in neutral ink.
+  -->
+  <text x="12" y="47" font-size="58" fill="#2563a8"
+        font-family="STIX Two Math, STIX Two Text, Cambria Math, Latin Modern Math, Iowan Old Style, Palatino, Georgia, serif">&#8747;</text>
+</svg>

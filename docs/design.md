@@ -1,0 +1,222 @@
+# Rule & Plate
+
+The visual language for Calcula. Not a component library — Calcula has no buttons, no dialogs and no
+cards, so there is nothing to catalogue. What it has instead is four regions, a type system for
+setting mathematics, and a small set of colours that each mean exactly one thing.
+
+The reference is a plate in a mathematics monograph: cool paper, engineered spacing, and rules drawn
+only where a rule carries meaning. Deliberately not a notebook — warm cream and a sepia serif are the
+wrong register for a CAS, which is an instrument.
+
+---
+
+## Themes
+
+Two: **Plate** (light) and **Slab** (dark). Both live in
+`resources/com/calcula/styles/themes/` and are applied by `com.calcula.ui.Themes`.
+
+They are **override sheets, not control themes.** AtlantaFX's Primer stays the user-agent stylesheet
+and keeps styling every standard control; the theme sheet redefines only the semantic `-color-*`
+tokens Primer resolves against. A scene stylesheet outranks the user-agent one, so the whole window
+re-colours without a single component rule being restated.
+
+Authoring a complete AtlantaFX theme was the alternative. It means carrying roughly 4 800 lines of
+component CSS that has nothing to do with Calcula, and re-vendoring it on every AtlantaFX bump. The
+token block is about seventy lines and is the only part that is actually ours.
+
+Load order is owned by `Themes.apply(scene, theme)` and is **Primer → theme tokens → `app.css`**.
+`app.css` is written entirely in tokens, so applying it before the sheet that defines them leaves
+every colour unresolved.
+
+### Plate
+
+| Token | Value | Job |
+|---|---|---|
+| `-color-bg-default` | `#f6f7f9` | Window, stack, echo area |
+| `-color-bg-subtle` | `#eceef2` | Trail, mode line |
+| `-color-fg-default` | `#1b1f27` | Stack values, typed input |
+| `-color-fg-muted` | `#5c6472` | Trail text |
+| `-color-fg-subtle` | `#8b93a1` | Stack index, notes |
+| `-color-border-default` | `#d5dae1` | Rules |
+| `-color-accent-fg` | `#2563a8` | Results, prompt, selection |
+| `-color-success-fg` | `#2c7355` | CAS available |
+| `-color-danger-fg` | `#b3392c` | Errors |
+| `-calc-inexact` | `#9a6a10` | Not exact, or not finished |
+
+### Slab
+
+Same roles: `#14171c` / `#1b1f26` / `#e4e8ee` / `#99a2b1` / `#6a7383` / `#2c323b` / `#6ba6e8` /
+`#54bd8e` / `#ef7167` / `#d9a441`.
+
+Not an inversion. The dark steps are chosen against the slab ground rather than derived by flipping
+the light ones — an accent that reads well on `#f6f7f9` is too dark on `#14171c`, and a naive flip is
+how a dark theme ends up with a muddy accent and unreadable status colours.
+
+---
+
+## The state language
+
+Six meanings. Each is named once as a token and referenced; never restate a hex at the call site, or
+the meaning drifts the first time one is tuned.
+
+| Meaning | Token | Where it appears |
+|---|---|---|
+| **Ink** — what you said | `-color-fg-default` | Stack values, echo text, `Kind.INPUT` |
+| **Azure** — what came back | `-color-accent-fg` | `Kind.RESULT`, the prompt, selection, plot series 1 |
+| **Amber** — not exact, or not finished | `-calc-inexact` | Stack gutter, index, pending chord |
+| **Vermilion** — why nothing came back | `-color-danger-fg` | `Kind.ERROR`, `CAS unavailable` |
+| **Verdigris** — the engine is here | `-color-success-fg` | Mode line CAS slot |
+| **Faint** — the calculator on itself | `-color-fg-subtle` | `Kind.NOTE`, mode flags, stack index |
+
+Vermilion never means "important" and never decorates a heading, so when it appears it is
+unambiguous. Verdigris has exactly one use: green is a poor accent and a good confirmation.
+
+### Amber is the argument for the whole kit
+
+A CAS spends its life moving between exact and approximate. `Modes` already models the **policy**
+(`symbolic`, `fractions`) and the mode line reports it — but nothing reported the **value**.
+
+So every stack row carries a 3 px gutter rail before its index: transparent when the value is exact,
+amber when it is not. `5/6` is exact ink; `0.833333333333` is marked. Metadata lives in the gutter so
+the value itself stays clean — the same division an editor makes between its gutter and its text. The
+rail is *always present* and usually transparent, because adding it only when a marker applies would
+shift the text beside it by three pixels the moment a value changed.
+
+The predicate is `Exprs.containsInexact`, and it is **not** `!isExact`:
+
+```java
+Exprs.isExact(x + 1)          // false — it is a Call, not an exact *number*
+Exprs.containsInexact(x + 1)  // false — but it carries no numeric error
+```
+
+`isExact` is shallow and answers false for every symbol and every `Call`. Negating it to mean
+"inexact" marks every symbolic result the CAS returns, which is both wrong and the most visible thing
+in the window. What the UI wants is contamination: one `Flt` buried anywhere in a sum makes the whole
+value approximate, and nothing else does.
+
+The same amber marks a half-entered chord, because `C-x-` is likewise a value that has not settled.
+
+---
+
+## Typography
+
+Three faces, one job each.
+
+| Face | Region | Why |
+|---|---|---|
+| **STIX Two Text** | Stack | A true math italic and full Greek. Times-metric, OFL, and it has the glyphs the stack will need the moment it sets an integral. |
+| **Inter** | Mode line | A status strip, not data. Legible at 11 px with tight tracking, and it should not compete with the mathematics above it. |
+| **JetBrains Mono** | Trail, echo area | A log wants its `=` and `!` sigils in a column; the echo area is a text field being edited character by character. |
+
+Monospace is wrong for the stack. It has no real italic, and a fixed advance width destroys the
+spacing that carries meaning — a binary operator wants more air than a function applied to its
+argument.
+
+**None of the three is bundled yet.** Each is named with a full fallback chain in `app.css`, so a
+machine with none of them installed still lands on a serif rather than on nothing. Bundling them as
+resources and registering them with `Font.loadFont` before any stylesheet is applied is the
+outstanding follow-up; until then the chain is load-bearing.
+
+### Setting the mathematics
+
+Implemented in `ui.math` (`MathLayout` and friends): `Expr` renders to a tree of JavaFX nodes, one
+per subexpression, which is also the tree selection mode will hit-test against. These are the rules
+it follows.
+
+- **Math italic for variables, upright for function names and digits.** A single-letter symbol is a
+  variable; a multi-letter name is a function. That distinction is the whole reason `sin` is not read
+  as `s·i·n`.
+- **Real operator glyphs.** Minus is U+2212, not a hyphen — it is wider and sits on the math axis.
+  Multiplication is a centre dot, or nothing between a coefficient and its variable.
+- **Space by operator class**, in TeX's mu units: ordinary 0; binary operator 4 mu (0.222 em) both
+  sides; relation 5 mu (0.278 em) both sides; punctuation 3 mu after only; function to argument 3 mu.
+- **The 100 / 70 / 50 script cascade.** A superscript is 70 % of its parent; a superscript on a
+  superscript is 70 % of that, which is 50 % of text size and the floor.
+
+Stretchy delimiters are `Path`: JavaFX cannot read an OpenType MATH table, so tall brackets and
+radicals get drawn, not typed.
+
+`Formatter` still emits `-x*cos(x) + sin(x)` — it is the *textual* form, used by the trail and by
+tests. The stack is set from the same `Expr` by `MathLayout`, which is why the two do not have to
+agree character for character.
+
+---
+
+## The four regions
+
+| Region | Face & size | Metrics | Behaviour |
+|---|---|---|---|
+| **Trail** | JetBrains Mono 11 | 1 / 10 padding | Sigil column so `=` and `!` align. Scrolls to the tail on every publish. 28 % of the split, not resizable with the parent. |
+| **Stack** | `MathLayout`, 17 pt | 3 px rail + 8 px gap, 38 px index, 10 px gap | Bottom-aligned, so entry `1:` sits against the echo area. Two nested boxes: the rail fills height, the formula aligns on its baseline. Renumbers whole-list on any change. |
+| **Mode line** | Inter 11 | 4 / 12 padding, hairline both edges | Modes left, CAS right. An *off* flag is omitted, not greyed — Calc's own convention, and it keeps the strip short. |
+| **Echo area** | JetBrains Mono 14 | 8 / 12 / 10 padding | No border, no focus ring, transparent ground: a line of the page, not a widget on it. |
+
+Densities differ on purpose. The stack is read by scanning down a column of values, so its rows are
+loose; the trail is skimmed for a landmark and then read backwards, so it is tight. Two jobs, two
+numbers — not one shared constant.
+
+Nothing in the window is centred, and nothing is right-aligned except the stack index and the CAS
+slot. Everything else hangs from the same left margin so the eye has one edge to track.
+
+### The prompt is the status indicator
+
+With no toolbar and no dialogs, the one glyph the eye is already resting on carries the machine's
+state. `CalcWindow.setPrompt` owns text and style together so the two cannot drift.
+
+| Form | State |
+|---|---|
+| `›` azure | Ready |
+| `…` | Working — a CAS call is out |
+| `C-x-` amber | Prefix held, waiting for the next key |
+| `›` vermilion | Last line failed and was handed back |
+
+---
+
+## Identity
+
+The mark is an **integral operating on a small stack of terms**. Masters in `branding/`, rasters in
+`resources/com/calcula/icons/`.
+
+The accented rule is the **bottom** one, because Calcula draws entry `1:` — the top of the stack —
+nearest the input. Two muted rules against one heavy accent, never three equal bars: equal bars read
+as lines of text, which is what the first attempt got wrong. It looked like a note-taking app.
+
+**Reduction: one cut, at 32 px.** Above it, the full mark. Below it the rules stop resolving and turn
+into a smudge, so they are dropped and the integral takes the accent colour — a single-element mark
+should carry the brand colour rather than sit in neutral ink. There is no third form; every extra
+composition is another thing to keep in sync.
+
+The SVG masters **set** the integral rather than drawing it, so they depend on a math font being
+installed. Convert to outlines before shipping anything that renders the SVG directly. The PNGs carry
+no such dependency and are what `stage.getIcons()` loads.
+
+---
+
+## Plotting
+
+Not implemented. When it lands, four series assigned in **fixed order and never cycled**:
+
+| | Plate | Slab |
+|---|---|---|
+| 1 | `#2563a8` | `#4a90e2` |
+| 2 | `#0e9488` | `#12a894` |
+| 3 | `#8b45d6` | `#9a6fe0` |
+| 4 | `#c4356b` | `#e05a80` |
+
+Both sets are validated for colour-vision separation against their own ground; the dark steps are
+chosen for the slab, not brightened from the light ones. Vermilion, verdigris and amber are
+deliberately absent — they are status colours, and a series that borrows one makes both unreadable.
+
+Curves are **directly labelled**, never legended. The name of a function is short and belongs at the
+end of its own line, and direct labelling is also the secondary encoding that keeps adjacent series
+distinguishable without relying on hue alone.
+
+---
+
+## Still open
+
+- **Bundle the three faces.** Named with fallbacks today; not shipped.
+- **Selection mode**, on the node tree `MathLayout` already produces.
+- **Plotting**, against the palette above.
+- **A theme setting.** `Themes` supports both and `App` hardcodes `DEFAULT`; nothing persists a
+  choice yet, because Calcula has no settings file.

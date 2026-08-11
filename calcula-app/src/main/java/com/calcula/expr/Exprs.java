@@ -114,9 +114,31 @@ public final class Exprs {
         return e instanceof Num;
     }
 
-    /** True for an exact number: everything except {@link Flt}. */
+    /** True for an exact number: everything except {@link Flt}. Shallow — see {@link #containsInexact}. */
     public static boolean isExact(Expr e) {
         return e instanceof Int || e instanceof Rat;
+    }
+
+    /**
+     * True when a {@link Flt} appears anywhere in the tree.
+     *
+     * <p><b>This is not {@code !isExact(e)}, and the difference is the whole point.</b>
+     * {@link #isExact} asks "is this node an exact <em>number</em>", so it answers false for a
+     * symbol and false for every {@link Call} — including {@code x + 1}, which carries no error at
+     * all. Negating it to mean "inexact" marks every symbolic result as approximate, which is both
+     * wrong and the most visible thing in the window.
+     *
+     * <p>What the UI actually wants is contamination: one {@code Flt} buried anywhere in a sum
+     * makes the whole value approximate, and nothing else does. Hence a recursive walk rather than
+     * a cast.
+     */
+    public static boolean containsInexact(Expr e) {
+        return switch (e) {
+            case null -> false;
+            case Flt ignored -> true;
+            case Call c -> c.args().stream().anyMatch(Exprs::containsInexact);
+            default -> false; // Int, Rat, Sym — exact, or carrying no numeric error
+        };
     }
 
     public static boolean isSymbol(Expr e, String name) {
