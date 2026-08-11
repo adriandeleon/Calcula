@@ -46,7 +46,10 @@ public final class App extends Application {
         // Owns the load order: Primer (user agent) -> theme tokens -> app.css. app.css is written
         // entirely in -color-*/-calc-* tokens, so applying it before the sheet that defines them
         // leaves every colour unresolved and the window renders in JavaFX's defaults.
-        Themes.apply(scene, Themes.DEFAULT);
+        // The saved theme, and thereafter whatever Settings changes it to. CalcWindow owns the
+        // preference; the Scene is App's, so applying it has to come back here.
+        Themes.apply(scene, Themes.byName(window.settings().themeId()));
+        window.setOnThemeChanged(theme -> Themes.apply(scene, theme));
 
         stage.setTitle(window.title());
         stage.setScene(scene);

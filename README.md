@@ -3,8 +3,8 @@
 A keyboard-driven symbolic calculator in the spirit of Emacs Calc. JDK 25 + JavaFX 26, Maven, modular
 (JPMS, module `com.calcula`).
 
-The stack is a document, not a display: four regions — trail, stack, mode line, echo area — and no
-buttons anywhere. Input is keystrokes with prefix dispatch.
+The stack is a document, not a display: trail, stack, mode line, echo area, and no buttons anywhere.
+Input is keystrokes with prefix dispatch.
 
 ## Commands
 
@@ -188,6 +188,39 @@ Both writers emit from the tree rather than through the engine. `TeXForm` produc
 `\frac{x \sqrt{1 - x^{2}}}{2}`, and `MathMLForm` renders a matrix as nested sets rather
 than an `<mtable>` and prepends a DOCTYPE that has to be stripped. Writing them here also
 means copying works with no engine loaded.
+
+### Four ways in, one set of commands
+
+A menu bar, a command palette (`M-x`), settings, and right-click menus — all of them **views of
+`CommandRegistry`**, never parallel implementations. A hand-written menu is a second list of every
+action and it drifts from the first one silently: still offering something that was renamed, never
+offering something that was added. Here a command reaches the menu by being registered, and by
+nothing else; `CommandGroups` files it from its id prefix.
+
+Every surface shows the **chord**, and no menu item installs a JavaFX accelerator. `KeyDispatcher`
+stays the only thing that dispatches a key — a second path could disagree with the keymap, and most
+bindings here are multi-key sequences (`C-x u`, `M-m d`) that a `KeyCombination` cannot express
+anyway. So the menu teaches the keyboard rather than competing with it. Where a command has several
+bindings, `Keymap.invert` advertises the **fewest chords**: undo is bound to both `C-z` and `C-x u`,
+and showing the two-key one would be true and useless.
+
+The palette is the complete index; the menu is a curated view. `input.submit` is the Enter key, and
+"Enter" as something to pick with the mouse is noise.
+
+Right-click menus offer only what applies to the row clicked. Drop and Evaluate act on the *top* of
+the stack, so they appear only when the clicked row is the top — there is no operation for "delete
+entry 4", and a menu item that quietly acted on entry 1 instead would be worse than its absence.
+
+Settings live in `settings.properties` under the config dir — `java.util.Properties`, because these
+are eight scalars and the alternative is a dependency on the modular half, whose freedom from
+non-modular jars is why there is no moditect step at all. A file from a newer schema is set aside
+rather than reinterpreted. **This is also where the input-model question is finally answered** — as a
+preference rather than a hardcoded default, which is the honest resolution: both readers are equally
+supported and which one someone wants is not something the program can know.
+
+`mvn test -Dtest=SurfaceSampleFxTest` writes `palette-sample.png` and `settings-sample.png` to look
+at. Worth doing: rendering these caught right-aligned section headings and a list clipped mid-row
+while 340 structural tests stayed green.
 
 ### Modes
 

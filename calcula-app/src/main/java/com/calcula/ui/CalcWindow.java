@@ -9,24 +9,36 @@ import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Pos;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.MenuItem;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 
 import com.calcula.AppInfo;
+import com.calcula.SessionLog;
 import com.calcula.cas.CasEngine;
 import com.calcula.cas.CasEngineLoader;
 import com.calcula.cas.CasException;
+import com.calcula.command.CommandGroups;
 import com.calcula.command.CommandRegistry;
+import com.calcula.config.Settings;
+import com.calcula.config.SettingsStore;
+import com.calcula.export.TexWriter;
 import com.calcula.expr.Expr;
 import com.calcula.expr.Exprs;
 import com.calcula.input.AlgebraicReader;
@@ -73,8 +85,8 @@ import com.calcula.ui.plot.PlotCanvas;
  */
 public final class CalcWindow {
 
-    /** Point size for rendered stack entries. */
-    private static final double STACK_MATH_SIZE = 17;
+    /** Point size for rendered stack entries, from settings. */
+    private double mathSize = Settings.DEFAULTS.mathSize();
 
     /** A plot on the stack is a thumbnail; it is still fully interactive. */
     private static final double STACK_PLOT_WIDTH = 360;
@@ -90,6 +102,15 @@ public final class CalcWindow {
      */
     private static final double GUTTER_GAP = 8;
 
+    /**
+     * The scene root, wrapping {@link #root} so an overlay has somewhere to sit.
+     *
+     * <p>The palette and the settings card are IN this scene rather than in a Popup: a Popup is a
+     * separate native window, and on Windows one does not reliably take OS keyboard focus, which
+     * strands focus between two scenes and kills the keyboard application-wide.
+     */
+    private final StackPane sceneRoot = new StackPane();
+
     private final BorderPane root = new BorderPane();
     private final ObservableList<Expr> stack = FXCollections.observableArrayList();
     private final ObservableList<TrailEntry> trailLines = FXCollections.observableArrayList();
@@ -104,6 +125,16 @@ public final class CalcWindow {
     private final Keymap keymap = new Keymap();
     private final KeyDispatcher dispatcher = new KeyDispatcher(keymap, registry);
     private final Machine machine;
+    private final OverlayHost overlays = new OverlayHost();
+    private final SettingsStore settingsStore = new SettingsStore(SessionLog.configDir());
+    private final CommandPalette palette;
+    private final SettingsDialog settingsDialog;
+    private final CommandMenuBar menuBar;
+
+    private Settings settings;
+
+    /** Applying a theme needs the Scene, which App owns. */
+    private Consumer<Themes> onThemeChanged = t -> {};
 
     /** Serial worker: the machine is single-threaded by contract, and a CAS call is slow. */
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
@@ -125,12 +156,30 @@ public final class CalcWindow {
     private volatile Reader reader = new AlgebraicReader();
 
     public CalcWindow() {
-        machine = new Machine(Evaluator.numericThen(this::askEngine));
+        settings = settingsStore.load();
+        mathSize = settings.mathSize();
+        reader = settings.isRpn() ? new RpnReader() : new AlgebraicReader();
+        // The saved modes are where a NEW session starts. They are seeded into the machine's initial
+        // state rather than pushed as an operation, so the first thing in the undo history is the
+        // user's first calculation and not the act of loading their preferences.
+        machine = new Machine(Evaluator.numericThen(this::askEngine), CalcState.EMPTY.withModes(settings.modes()));
 
         buildStack();
         buildTrail();
+
+        // BEFORE registerCommands: `palette::show` is a method reference, and a method reference binds
+        // its receiver at the point it is written, not when it runs — so registering it against a
+        // still-null field is an NPE during construction rather than a lazy lookup later.
+        palette = new CommandPalette(registry, keymap::invert, overlays, this::runCommand);
+        settingsDialog = new SettingsDialog(overlays, () -> settings, this::applySettings);
+
         registerCommands();
         installDefaultKeymap();
+
+        // AFTER both: the menu is generated from what is registered and what is bound, so it can only
+        // be built once there is something to read.
+        menuBar = new CommandMenuBar(registry.all(), keymap.invert(), this::runCommand);
+        root.setTop(menuBar.node());
 
         SplitPane split = new SplitPane(trailView, stackView);
         split.setDividerPositions(0.28);
@@ -141,11 +190,48 @@ public final class CalcWindow {
         root.getStyleClass().add("calc-root");
 
         input.addEventFilter(KeyEvent.KEY_PRESSED, this::onKey);
+
+        sceneRoot.getChildren().add(root);
+        overlays.install(sceneRoot);
         refreshModeLine();
+        menuBar.refresh(machine.modes(), reader instanceof RpnReader);
     }
 
     public Region getRoot() {
-        return root;
+        return sceneRoot;
+    }
+
+    /** The saved preferences. */
+    public Settings settings() {
+        return settings;
+    }
+
+    /** App owns the Scene, so it owns applying a theme to it. */
+    public void setOnThemeChanged(Consumer<Themes> handler) {
+        this.onThemeChanged = handler == null ? t -> {} : handler;
+    }
+
+    /**
+     * Take a new set of preferences: persist them, then apply what can be applied now.
+     *
+     * <p>Only the theme and the display size take effect immediately. The entry model does too, since
+     * it governs the next line typed. The modes deliberately do NOT reach into the running session —
+     * they are what the next one starts from, and changing a preference is not an operation on the
+     * stack.
+     */
+    public void applySettings(Settings updated) {
+        this.settings = updated;
+        settingsStore.save(updated);
+        onThemeChanged.accept(Themes.byName(updated.themeId()));
+        if (updated.mathSize() != mathSize) {
+            mathSize = updated.mathSize();
+            stackView.refresh();
+        }
+        boolean wantRpn = updated.isRpn();
+        if (wantRpn != reader instanceof RpnReader) {
+            reader = wantRpn ? new RpnReader() : new AlgebraicReader();
+            menuBar.refresh(machine.modes(), wantRpn);
+        }
     }
 
     public void focusInput() {
@@ -241,24 +327,138 @@ public final class CalcWindow {
                 "plot.function",
                 "Plot",
                 "Draw the top of the stack as a curve",
-                () -> onMachine(m -> {
-                    Expr top = m.state().at(1);
-                    if (PlotValue.isPlot(top)) {
-                        m.record(new TrailEntry(TrailEntry.Kind.NOTE, "that is already a plot"));
-                        return;
-                    }
-                    // The formula is NOT consumed: Calc graphs without taking the value away, and having the
-                    // expression still there is the point of plotting it.
-                    Expr plot = PlotValue.of(top, PlotValue.inferVariable(top), -10, 10);
-                    // On the worker thread, where the engine is reachable and a slow Solve cannot stall the UI.
-                    plotAnalyses.put(plot, analyse(plot));
-                    m.apply(new Op.Push(plot));
-                }));
+                () -> onMachine(m -> plotInto(m, m.state().at(1))));
         registry.register("input.toggleModel", "Toggle entry model", "Switch between algebraic and RPN entry", () -> {
             reader = reader instanceof AlgebraicReader ? new RpnReader() : new AlgebraicReader();
             onMachine(m -> m.record(new TrailEntry(TrailEntry.Kind.NOTE, "entry: " + reader.id())));
         });
         registerModeCommands();
+        registerApplicationCommands();
+    }
+
+    /**
+     * The commands the surrounding application offers, as opposed to the calculator itself.
+     *
+     * <p>Under {@code app.} and {@code help.} so {@link CommandGroups} files them without being told,
+     * which is the same rule every other command follows.
+     */
+    private void registerApplicationCommands() {
+        registry.register("app.palette", "Commands…", "Search every command by name", palette::show);
+        registry.register("app.settings", "Settings…", "Preferences a new session starts from", settingsDialog::show);
+        registry.register("app.quit", "Quit", "Close Calcula", () -> javafx.application.Platform.exit());
+        registry.register("help.about", "About Calcula", "Version and licence", this::showAbout);
+    }
+
+    /**
+     * Run a command by id — the ONE entry point every surface uses.
+     *
+     * <p>The keymap, the menu, the palette and the context menus all arrive here, so an action cannot
+     * behave differently depending on how it was reached. It is also the only place that has to know
+     * what to do when a command throws.
+     */
+    private void runCommand(String id) {
+        try {
+            if (!registry.run(id)) {
+                onMachine(m -> m.recordError("no such command: " + id));
+            }
+        } catch (RuntimeException e) {
+            onMachine(m -> m.recordError(describe(e)));
+        }
+    }
+
+    /**
+     * Draw {@code value} as a curve and push the picture.
+     *
+     * <p>Shared by the command (which takes the top) and the context menu (which takes the row that
+     * was clicked), so the two cannot drift into plotting different things in different ways.
+     *
+     * <p>Runs on the worker thread, where the engine is reachable and a slow Solve for the poles
+     * cannot stall the window.
+     */
+    private void plotInto(Machine m, Expr value) {
+        if (PlotValue.isPlot(value)) {
+            m.record(new TrailEntry(TrailEntry.Kind.NOTE, "that is already a plot"));
+            return;
+        }
+        // The formula is NOT consumed: Calc graphs without taking the value away, and having the
+        // expression still there is the point of plotting it.
+        Expr plot = PlotValue.of(value, PlotValue.inferVariable(value), -10, 10);
+        plotAnalyses.put(plot, analyse(plot));
+        m.apply(new Op.Push(plot));
+    }
+
+    private void plotValue(Expr value) {
+        onMachine(m -> plotInto(m, value));
+    }
+
+    /**
+     * The right-click menu for one stack entry.
+     *
+     * <p>Offers only what genuinely applies to the row that was clicked. Drop and Evaluate act on the
+     * <em>top</em> of the stack — there is no operation for "delete entry 4", and inventing a menu item
+     * that quietly acted on entry 1 instead would be worse than not offering it — so they appear only
+     * when the clicked row IS the top. Copy, Duplicate and Plot work on any value, and take the one
+     * that was clicked.
+     */
+    ContextMenu stackMenu(Expr value, int position) {
+        ContextMenu menu = new ContextMenu();
+        menu.getItems()
+                .addAll(
+                        menuItem("Copy", () -> {
+                            ClipboardExport.copy(value);
+                            noteFromFx(ClipboardExport.describe(value));
+                        }),
+                        menuItem("Copy as LaTeX", () -> copyText(TexWriter.write(value))),
+                        new SeparatorMenuItem(),
+                        menuItem("Duplicate to top", () -> machineOp(new Op.Push(value))),
+                        menuItem("Plot", () -> plotValue(value)));
+        if (position == 1) {
+            menu.getItems()
+                    .addAll(
+                            new SeparatorMenuItem(),
+                            menuItem("Evaluate", () -> runCommand("stack.evaluate")),
+                            menuItem("Drop", () -> runCommand("stack.drop")));
+        }
+        return menu;
+    }
+
+    ContextMenu trailMenu(TrailEntry entry) {
+        return new ContextMenu(
+                menuItem("Copy line", () -> copyText(renderTrail(entry))),
+                menuItem(
+                        "Copy whole trail",
+                        () -> copyText(trailLines.stream()
+                                .map(CalcWindow::renderTrail)
+                                .collect(java.util.stream.Collectors.joining(System.lineSeparator())))));
+    }
+
+    private static MenuItem menuItem(String label, Runnable action) {
+        MenuItem item = new MenuItem(label);
+        item.setOnAction(e -> action.run());
+        return item;
+    }
+
+    private void copyText(String text) {
+        ClipboardContent content = new ClipboardContent();
+        content.putString(text);
+        Clipboard.getSystemClipboard().setContent(content);
+        noteFromFx("copied " + text.lines().count() + " line(s)");
+    }
+
+    /** A note raised from the FX thread, where the machine itself must not be touched. */
+    private void noteFromFx(String message) {
+        onMachine(m -> m.record(new TrailEntry(TrailEntry.Kind.NOTE, message)));
+    }
+
+    private void showAbout() {
+        Alert about = new Alert(Alert.AlertType.INFORMATION);
+        about.setTitle("About Calcula");
+        about.setHeaderText(AppInfo.NAME + " " + AppInfo.VERSION);
+        about.setContentText("A keyboard-driven symbolic calculator in the spirit of Emacs Calc.\n\n"
+                + AppInfo.COPYRIGHT + "\n" + AppInfo.LICENSE + "\n\nSettings: " + settingsStore.file());
+        about.initOwner(
+                sceneRoot.getScene() == null ? null : sceneRoot.getScene().getWindow());
+        about.showAndWait();
     }
 
     /**
@@ -349,6 +549,12 @@ public final class CalcWindow {
         keymap.bind("M-m p", "mode.precision");
         keymap.bind("M-m s", "mode.symbolic");
         keymap.bind("M-m f", "mode.fractions");
+        // M-x for the palette, as in Emacs. Both spellings of the settings chord, since Chords emits
+        // Cmd- on macOS and C- everywhere else, and , is where every platform puts preferences.
+        keymap.bind("M-x", "app.palette");
+        keymap.bind("C-,", "app.settings");
+        keymap.bind("Cmd-,", "app.settings");
+        keymap.bind("C-x C-c", "app.quit");
     }
 
     private void onKey(KeyEvent event) {
@@ -488,6 +694,7 @@ public final class CalcWindow {
             trailView.scrollTo(trailLines.size() - 1);
         }
         refreshModeLine();
+        menuBar.refresh(snapshot.modes(), reader instanceof RpnReader);
         setPrompt("›", false);
     }
 
@@ -588,7 +795,7 @@ public final class CalcWindow {
                         ? plotFor(value)
                         : GraphicsScene.isGraphics(value)
                                 ? sceneFor(value)
-                                : MathLayout.render(value, MathStyle.of(STACK_MATH_SIZE));
+                                : MathLayout.render(value, MathStyle.of(mathSize));
                 content.getStyleClass().add("stack-value");
 
                 // Two boxes, because the rail and the formula want opposite alignments and one box
@@ -608,6 +815,12 @@ public final class CalcWindow {
                 HBox.setHgrow(gutter, Priority.NEVER); // a fixed rail, not a flexible column
                 setGraphic(row);
                 setText(null);
+                // Built per right-click rather than once per cell: cells are RECYCLED, so a menu
+                // captured at construction would act on whatever value the cell showed first.
+                setOnContextMenuRequested(e -> {
+                    stackMenu(value, stack.size() - getIndex()).show(this, e.getScreenX(), e.getScreenY());
+                    e.consume();
+                });
             }
         });
         // Renumbering is a whole-list property: dropping entry 3 changes what every entry below is
@@ -637,6 +850,10 @@ public final class CalcWindow {
                 }
                 setText(renderTrail(entry));
                 getStyleClass().add(trailCellClass(entry));
+                setOnContextMenuRequested(e -> {
+                    trailMenu(entry).show(this, e.getScreenX(), e.getScreenY());
+                    e.consume();
+                });
             }
         });
     }
@@ -706,6 +923,16 @@ public final class CalcWindow {
     /** Visible for tests: what the input line currently holds. */
     public String typed() {
         return input.getText();
+    }
+
+    /** Visible for tests: whether an overlay — the palette or settings — is up. */
+    public boolean overlayShowing() {
+        return overlays.isShowing();
+    }
+
+    /** Visible for tests: dismiss whatever overlay is up, as Escape would. */
+    public void closeOverlay() {
+        overlays.hide();
     }
 
     /** Visible for tests: the mode line, as it reads. */

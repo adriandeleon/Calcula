@@ -53,11 +53,44 @@ public final class Keymap {
         return new LinkedHashMap<>(bindings);
     }
 
-    /** Command id to the sequence that runs it, for showing shortcuts in help. First binding wins. */
+    /**
+     * Command id to the sequence to <em>show</em> for it, in a menu or a palette.
+     *
+     * <p>A command can have several bindings, and this picks the one worth teaching: the <b>fewest
+     * chords</b>, ties broken by shorter text and then alphabetically so the answer is stable. Undo is
+     * bound to both {@code C-z} and {@code C-x u}, and taking whichever came first in sorted order
+     * advertised {@code C-x u} — technically true, and the wrong thing to tell someone, since the
+     * one-chord binding is the whole reason it exists.
+     *
+     * <p>Display only. Every binding still runs; this decides which one the interface teaches.
+     */
     public Map<String, String> invert() {
         Map<String, String> inverted = new LinkedHashMap<>();
-        bindings.forEach((sequence, id) -> inverted.putIfAbsent(id, sequence));
+        bindings.forEach((sequence, id) -> inverted.merge(id, sequence, Keymap::moreTeachable));
         return inverted;
+    }
+
+    /** The more teachable of two bindings for the same command. */
+    private static String moreTeachable(String a, String b) {
+        int chords = Integer.compare(chordCount(a), chordCount(b));
+        if (chords != 0) {
+            return chords < 0 ? a : b;
+        }
+        int length = Integer.compare(a.length(), b.length());
+        if (length != 0) {
+            return length < 0 ? a : b;
+        }
+        return a.compareTo(b) <= 0 ? a : b;
+    }
+
+    private static int chordCount(String sequence) {
+        int chords = 1;
+        for (int i = 0; i < sequence.length(); i++) {
+            if (sequence.charAt(i) == ' ') {
+                chords++;
+            }
+        }
+        return chords;
     }
 
     public int size() {

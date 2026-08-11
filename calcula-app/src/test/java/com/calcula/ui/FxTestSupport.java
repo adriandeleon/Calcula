@@ -25,10 +25,39 @@ public final class FxTestSupport {
 
     private FxTestSupport() {}
 
+    /**
+     * Point the config directory at a throwaway, before anything can read the real one.
+     *
+     * <p>{@code CalcWindow} loads settings when it is constructed and saves them when they change, so
+     * without this the suite would take its behaviour from whatever preferences the developer happens
+     * to have — a test asserting algebraic entry would fail on a machine set to RPN — and could write
+     * over them. A test must not be able to change the machine it is running on.
+     */
+    private static void useScratchConfigDir() throws java.io.IOException {
+        if (System.getProperty("calcula.config.dir") == null) {
+            freshConfigDir();
+        }
+    }
+
+    /**
+     * Point the config directory at a brand-new throwaway.
+     *
+     * <p>Any test that SAVES settings must call this first. One scratch directory for the whole suite
+     * is not enough: the tests share a JVM, so a test that saves a preference changes what every later
+     * test loads — a mode saved by one made another see degrees where it expected radians, which is
+     * order-dependent and miserable to diagnose once there are more tests than you can read at once.
+     */
+    public static void freshConfigDir() throws java.io.IOException {
+        java.nio.file.Path scratch = java.nio.file.Files.createTempDirectory("calcula-test-config");
+        scratch.toFile().deleteOnExit();
+        System.setProperty("calcula.config.dir", scratch.toString());
+    }
+
     public static synchronized void bootToolkit() throws Exception {
         if (booted) {
             return;
         }
+        useScratchConfigDir();
         FxToolkit.registerPrimaryStage();
         runOnFx(() -> {
             // The AtlantaFX user-agent stylesheet defines the -color-* vars app.css resolves against.

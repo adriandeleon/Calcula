@@ -1,0 +1,87 @@
+package com.calcula.ui;
+
+import java.io.File;
+import java.nio.file.Path;
+
+import javafx.scene.Scene;
+import javafx.scene.SnapshotParameters;
+import javafx.scene.image.WritableImage;
+import javafx.scene.layout.Region;
+
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Writes pictures of the new surfaces to {@code target/} so they can be looked at.
+ *
+ * <p>Not decoration. Four separate layout faults on this project were found by rendering something and
+ * looking at it while a full suite of structural tests stayed green — a test can assert that a node
+ * exists, has the right text and is in the right parent, and still not notice that it is drawn on top
+ * of another one. The ink assertion here is a floor, not the point; the point is the file.
+ *
+ * <p>{@code mvn test -Dtest=SurfaceSampleFxTest}
+ */
+@Tag("fx")
+class SurfaceSampleFxTest {
+
+    @BeforeAll
+    static void boot() throws Exception {
+        FxTestSupport.bootToolkit();
+    }
+
+    @org.junit.jupiter.api.BeforeEach
+    void isolate() throws Exception {
+        FxTestSupport.freshConfigDir();
+    }
+
+    @Test
+    void thePaletteRenders() throws Exception {
+        snapshot("palette-sample.png", "app.palette");
+    }
+
+    @Test
+    void theSettingsCardRenders() throws Exception {
+        snapshot("settings-sample.png", "app.settings");
+    }
+
+    private void snapshot(String name, String command) throws Exception {
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        Region root = window.getRoot();
+        FxTestSupport.runOnFx(() -> {
+            Scene scene = new Scene(root, 980, 660);
+            // Mirrors App.start. Without it app.css is absent and the picture shows an UNSTYLED
+            // palette — which looks exactly like a CSS bug and sent me looking for one.
+            Themes.apply(scene, Themes.byName(window.settings().themeId()));
+            root.applyCss();
+            root.layout();
+            // Something on the stack, so the picture shows the overlay against real content rather
+            // than against an empty window.
+            window.submit("integrate(x*sin(x), x)");
+        });
+        FxTestSupport.runOnFx(() -> window.run(command));
+        FxTestSupport.runOnFx(() -> {
+            root.applyCss();
+            root.layout();
+        });
+
+        WritableImage image = FxTestSupport.callOnFx(() -> root.snapshot(new SnapshotParameters(), null));
+        Path out = Path.of("target", name);
+        javax.imageio.ImageIO.write(
+                javafx.embed.swing.SwingFXUtils.fromFXImage(image, null), "png", new File(out.toString()));
+
+        int lit = 0;
+        for (int x = 0; x < image.getWidth(); x += 2) {
+            for (int y = 0; y < image.getHeight(); y += 2) {
+                if (image.getPixelReader().getColor(x, y).getBrightness() > 0.55) {
+                    lit++;
+                }
+            }
+        }
+        System.out.println("WROTE " + out.toAbsolutePath() + "  " + lit + " lit pixels");
+        assertTrue(lit > 300, "the picture looks blank: " + lit + " lit pixels");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+}
