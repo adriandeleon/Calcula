@@ -336,3 +336,65 @@
 .settings-buttons {
     -fx-padding: 4 0 0 0;
 }
+
+/* ---- function completion ------------------------------------------------
+ * A Popup, unlike the palette — it never takes focus, and it has to escape the
+ * window bounds. See InputCompletion.
+ */
+
+.completion-list {
+    -fx-background-color: -color-bg-default;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 1;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.4), 16, 0.2, 0, 4);
+}
+
+.completion-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 1 6 1 6;
+}
+
+.completion-list .list-cell:filled:selected {
+    -fx-background-color: -color-accent-subtle;
+}
+
+.completion-name {
+    -fx-text-fill: -color-fg-default;
+    -fx-font-weight: bold;
+}
+
+.completion-signature {
+    -fx-font-family: monospace;
+    -fx-text-fill: -color-accent-fg;
+    -fx-font-size: 0.9em;
+}
+
+.completion-summary {
+    -fx-text-fill: -color-fg-muted;
+    -fx-font-size: 0.85em;
+}
+
+/* ---- the empty stack ----------------------------------------------------
+ * A first-run window with four empty regions tells you nothing about what to
+ * type, and the cost of finding out is closing it.
+ */
+
+.stack-empty {
+    -fx-spacing: 6;
+    -fx-alignment: center-left;
+    -fx-padding: 20;
+}
+
+.stack-empty .label {
+    -fx-text-fill: -color-fg-muted;
+}
+
+/* Descendant-scoped so it OUTRANKS `.stack-empty .label` above. A bare .stack-empty-example
+   is (0,1,0) against that rule's (0,2,0), so the examples came out muted like the prose around
+   them — which is the opposite of the point, since these are the lines meant to be typed. */
+.stack-empty .stack-empty-example {
+    -fx-font-family: monospace;
+    -fx-text-fill: -color-accent-fg;
+}

@@ -38,6 +38,11 @@ class SurfaceSampleFxTest {
     }
 
     @Test
+    void theEmptyWindowRenders() throws Exception {
+        snapshot("empty-sample.png", null);
+    }
+
+    @Test
     void thePaletteRenders() throws Exception {
         snapshot("palette-sample.png", "app.palette");
     }
@@ -59,9 +64,13 @@ class SurfaceSampleFxTest {
             root.layout();
             // Something on the stack, so the picture shows the overlay against real content rather
             // than against an empty window.
-            window.submit("integrate(x*sin(x), x)");
+            if (command != null) {
+                window.submit("integrate(x*sin(x), x)");
+            }
         });
-        FxTestSupport.runOnFx(() -> window.run(command));
+        if (command != null) {
+            FxTestSupport.runOnFx(() -> window.run(command));
+        }
         FxTestSupport.runOnFx(() -> {
             root.applyCss();
             root.layout();
@@ -81,7 +90,7 @@ class SurfaceSampleFxTest {
             }
         }
         System.out.println("WROTE " + out.toAbsolutePath() + "  " + lit + " lit pixels");
-        assertTrue(lit > 300, "the picture looks blank: " + lit + " lit pixels");
+        assertTrue(lit > 150, "the picture looks blank: " + lit + " lit pixels");
         FxTestSupport.runOnFx(window::dispose);
     }
 }

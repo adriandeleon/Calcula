@@ -130,6 +130,18 @@ public final class CalcWindow {
     private final CommandPalette palette;
     private final SettingsDialog settingsDialog;
     private final CommandMenuBar menuBar;
+    private final InputCompletion completion = new InputCompletion(input);
+
+    /**
+     * Lines already submitted, oldest first, walked with Up and Down.
+     *
+     * <p>Session-only and unbounded in practice — a calculator session is hundreds of lines, not
+     * millions. {@code historyAt == size()} means "not browsing", which is why it is an index into a
+     * position PAST the end rather than a flag.
+     */
+    private final List<String> history = new java.util.ArrayList<>();
+
+    private int historyAt;
 
     private Settings settings;
 
@@ -190,6 +202,13 @@ public final class CalcWindow {
         root.getStyleClass().add("calc-root");
 
         input.addEventFilter(KeyEvent.KEY_PRESSED, this::onKey);
+        // Offer completions as the name is typed. Cheap: a prefix scan of a curated table of eighty.
+        //
+        // DEFERRED by one pulse, and it has to be: a text-property listener fires while the caret is
+        // still where it was, so computing the word before the caret here reads one character behind
+        // what was typed — every suggestion would be for the previous keystroke. A pulse is invisible
+        // to a typist and removes the ordering question entirely.
+        input.textProperty().addListener((o, was, now) -> Platform.runLater(completion::update));
 
         sceneRoot.getChildren().add(root);
         overlays.install(sceneRoot);
@@ -401,7 +420,36 @@ public final class CalcWindow {
      * that was clicked.
      */
     ContextMenu stackMenu(Expr value, int position) {
+        return stackMenu(value, position, null);
+    }
+
+    /**
+     * The right-click menu for one stack entry, and for the part of it under the cursor.
+     *
+     * <p>{@code clicked} is what {@link MathLayout#exprAt} resolved from the node the mouse was over.
+     * When it is a proper part of the entry, the menu leads with operations on THAT — pulling
+     * {@code sin(x)} out of an integral without retyping it is the payoff for setting formulas as
+     * mathematics rather than printing them as text.
+     *
+     * <p>Reading a part needs no address; the subterm is enough. Rewriting one back into its parent is
+     * a different problem — two equal parts are different places — which is what {@code ExprPath} is
+     * for, and is the next thing to build on this.
+     */
+    ContextMenu stackMenu(Expr value, int position, Expr clicked) {
         ContextMenu menu = new ContextMenu();
+        if (clicked != null && !clicked.equals(value)) {
+            String label = Formatter.format(clicked);
+            String shown = label.length() > 28 ? label.substring(0, 27) + "…" : label;
+            menu.getItems()
+                    .addAll(
+                            menuItem("Extract  " + shown, () -> machineOp(new Op.Push(clicked))),
+                            menuItem("Copy  " + shown, () -> {
+                                ClipboardExport.copy(clicked);
+                                noteFromFx(ClipboardExport.describe(clicked));
+                            }),
+                            menuItem("Plot  " + shown, () -> plotValue(clicked)),
+                            new SeparatorMenuItem());
+        }
         menu.getItems()
                 .addAll(
                         menuItem("Copy", () -> {
@@ -558,6 +606,9 @@ public final class CalcWindow {
     }
 
     private void onKey(KeyEvent event) {
+        if (handleCompletionAndHistory(event)) {
+            return;
+        }
         // While a prefix is held every key belongs to the dispatcher, including a bare letter that
         // would otherwise type. That is what makes the second half of C-x u or M-m r arrive at all.
         boolean continuing = dispatcher.hasPending();
@@ -683,6 +734,81 @@ public final class CalcWindow {
         }
     }
 
+    /**
+     * The keys that belong to the input line rather than to the calculator.
+     *
+     * <p>Runs before the chord dispatcher, and returns true when it has consumed the key.
+     *
+     * <p><b>Tab accepts a completion; Enter does not.</b> Every other editor lets Enter accept, and
+     * that is wrong here: Enter is THE action in a calculator, and quietly turning "evaluate what I
+     * typed" into "accept a suggestion I was ignoring" is the kind of surprise that makes people stop
+     * trusting the input line.
+     */
+    private boolean handleCompletionAndHistory(KeyEvent event) {
+        if (dispatcher.hasPending()) {
+            return false; // mid-chord: the keyboard belongs to the dispatcher
+        }
+        if (completion.isShowing()) {
+            switch (event.getCode()) {
+                case DOWN -> {
+                    completion.move(1);
+                    event.consume();
+                    return true;
+                }
+                case UP -> {
+                    completion.move(-1);
+                    event.consume();
+                    return true;
+                }
+                case TAB -> {
+                    completion.accept();
+                    event.consume();
+                    return true;
+                }
+                case ESCAPE -> {
+                    completion.hide();
+                    event.consume();
+                    return true;
+                }
+                default -> completion.hide(); // any other key is typing; it will re-offer if it should
+            }
+            return false;
+        }
+        switch (event.getCode()) {
+            case UP -> {
+                recallHistory(-1);
+                event.consume();
+                return true;
+            }
+            case DOWN -> {
+                recallHistory(1);
+                event.consume();
+                return true;
+            }
+            case TAB -> {
+                // An explicit ask, for a name already fully typed — the one case the automatic
+                // trigger deliberately stays quiet about.
+                completion.update();
+                event.consume();
+                return true;
+            }
+            default -> {
+                return false;
+            }
+        }
+    }
+
+    /** Walk the history. {@code historyAt == history.size()} is the live line, below the oldest entry. */
+    private void recallHistory(int by) {
+        if (history.isEmpty()) {
+            return;
+        }
+        int next = Math.clamp((long) historyAt + by, 0, history.size());
+        historyAt = next;
+        input.setText(next == history.size() ? "" : history.get(next));
+        input.positionCaret(input.getText().length());
+    }
+
     private void machineOp(Op op) {
         onMachine(m -> m.apply(op));
     }
@@ -736,7 +862,14 @@ public final class CalcWindow {
             machineOp(new Op.Dup(1)); // Calc: bare Enter duplicates the top of the stack
             return;
         }
+        // Deduped against the previous entry only: pressing Enter twice on the same line is one
+        // thing you did, and a history full of repeats is a history you stop walking.
+        if (history.isEmpty() || !history.get(history.size() - 1).equals(text)) {
+            history.add(text);
+        }
+        historyAt = history.size();
         input.clear();
+        completion.hide();
         setPrompt("…", false);
         Reader current = reader;
         onMachine(m -> {
@@ -761,6 +894,7 @@ public final class CalcWindow {
 
     private void buildStack() {
         stackView.getStyleClass().add("stack-view");
+        stackView.setPlaceholder(emptyStackHint());
         stackView.setCellFactory(v -> new ListCell<>() {
             @Override
             protected void updateItem(Expr value, boolean empty) {
@@ -818,7 +952,11 @@ public final class CalcWindow {
                 // Built per right-click rather than once per cell: cells are RECYCLED, so a menu
                 // captured at construction would act on whatever value the cell showed first.
                 setOnContextMenuRequested(e -> {
-                    stackMenu(value, stack.size() - getIndex()).show(this, e.getScreenX(), e.getScreenY());
+                    // What was actually clicked, which is usually a PART of the formula rather than
+                    // the whole of it. This is the one thing a rendered formula can offer that a line
+                    // of text cannot.
+                    Expr under = e.getTarget() instanceof javafx.scene.Node n ? MathLayout.exprAt(n) : null;
+                    stackMenu(value, stack.size() - getIndex(), under).show(this, e.getScreenX(), e.getScreenY());
                     e.consume();
                 });
             }
@@ -831,6 +969,30 @@ public final class CalcWindow {
                 stackView.scrollTo(stack.size() - 1);
             }
         });
+    }
+
+    /**
+     * What an empty stack says.
+     *
+     * <p>A first-run window with four empty regions and a prompt tells someone nothing about what to
+     * type, and the cost of finding out is closing it. Three lines that can be typed verbatim are
+     * worth more than any amount of documentation nobody opened.
+     */
+    private static javafx.scene.Node emptyStackHint() {
+        VBox hint = new VBox(
+                new Label("Type an expression and press Enter."),
+                example("1/2 + 1/3"),
+                example("integrate(x*sin(x), x)"),
+                example("solve(x^2 = 4, x)"),
+                new Label("M-x lists every command.  Tab completes a function name."));
+        hint.getStyleClass().add("stack-empty");
+        return hint;
+    }
+
+    private static Label example(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("stack-empty-example");
+        return label;
     }
 
     private void buildTrail() {
@@ -918,6 +1080,9 @@ public final class CalcWindow {
     /** Visible for tests: put text on the input line without submitting it. */
     public void type(String text) {
         input.setText(text);
+        // Where typing would have left it. setText alone leaves the caret at 0, so anything reading
+        // the word BEFORE the caret would see an empty line.
+        input.positionCaret(text.length());
     }
 
     /** Visible for tests: what the input line currently holds. */
@@ -933,6 +1098,19 @@ public final class CalcWindow {
     /** Visible for tests: dismiss whatever overlay is up, as Escape would. */
     public void closeOverlay() {
         overlays.hide();
+    }
+
+    /** Visible for tests: whether the function-completion popup is up. */
+    public boolean completionShowing() {
+        return completion.isShowing();
+    }
+
+    /** Visible for tests: the names currently on offer. A headless scene has no Window to draw in. */
+    public List<String> completionCandidates() {
+        return completion.candidates().stream()
+                .map(com.calcula.parse.Functions.Doc::name)
+                .distinct()
+                .toList();
     }
 
     /** Visible for tests: the mode line, as it reads. */
