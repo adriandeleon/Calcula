@@ -208,3 +208,20 @@
     -fx-stroke-line-cap: round;
     -fx-stroke-line-join: round;
 }
+
+/* ---- plots -------------------------------------------------------------
+ * A Canvas is invisible to CSS — nothing it paints can be selected — so the
+ * palette is exposed as styleable properties on the Region and read while
+ * painting. That keeps the one part of the window that would otherwise ignore
+ * the theme in step with the rest of it.
+ */
+
+.plot-canvas {
+    -fx-curve-color: -calc-series-1;
+    -fx-axis-color: -color-fg-muted;
+    -fx-grid-color: -color-border-muted;
+    -fx-label-color: -color-fg-subtle;
+    -fx-background-color: -color-bg-inset;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 1;
+}

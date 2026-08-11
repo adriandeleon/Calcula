@@ -41,8 +41,12 @@ import com.calcula.machine.MachineException;
 import com.calcula.machine.Op;
 import com.calcula.machine.TrailEntry;
 import com.calcula.parse.Formatter;
+import com.calcula.plot.ExprCompiler;
+import com.calcula.plot.PlotException;
+import com.calcula.plot.PlotValue;
 import com.calcula.ui.math.MathLayout;
 import com.calcula.ui.math.MathStyle;
+import com.calcula.ui.plot.PlotCanvas;
 
 /**
  * The main window: trail on the left, stack in the centre, mode line and echo area along the bottom.
@@ -68,6 +72,11 @@ public final class CalcWindow {
 
     /** Point size for rendered stack entries. */
     private static final double STACK_MATH_SIZE = 17;
+
+    /** A plot on the stack is a thumbnail; it is still fully interactive. */
+    private static final double STACK_PLOT_WIDTH = 360;
+
+    private static final double STACK_PLOT_HEIGHT = 200;
 
     /**
      * Space between the stack's gutter rail and the entry number.
@@ -162,6 +171,11 @@ public final class CalcWindow {
      * simply stays {@code x + 1} instead of every symbolic entry becoming an error.
      */
     private Expr askEngine(Expr e) {
+        if (PlotValue.isPlot(e)) {
+            // $Plot is ours, not the engine's. Sending it would be a pointless round trip at best and
+            // an unrecognised-symbol error at worst.
+            return e;
+        }
         CasEngine current = engine;
         if (!current.available()) {
             return e;
@@ -207,6 +221,20 @@ public final class CalcWindow {
                         m.record(new TrailEntry(TrailEntry.Kind.NOTE, "nothing to redo"));
                     }
                 }));
+        registry.register(
+                "plot.function",
+                "Plot",
+                "Draw the top of the stack as a curve",
+                () -> onMachine(m -> {
+                    Expr top = m.state().at(1);
+                    if (PlotValue.isPlot(top)) {
+                        m.record(new TrailEntry(TrailEntry.Kind.NOTE, "that is already a plot"));
+                        return;
+                    }
+                    // The formula is NOT consumed: Calc graphs without taking the value away, and having the
+                    // expression still there is the point of plotting it.
+                    m.apply(new Op.Push(PlotValue.of(top, PlotValue.inferVariable(top), -10, 10)));
+                }));
         registry.register("input.toggleModel", "Toggle entry model", "Switch between algebraic and RPN entry", () -> {
             reader = reader instanceof AlgebraicReader ? new RpnReader() : new AlgebraicReader();
             onMachine(m -> m.record(new TrailEntry(TrailEntry.Kind.NOTE, "entry: " + reader.id())));
@@ -226,6 +254,7 @@ public final class CalcWindow {
         keymap.bind("C-x e", "stack.evaluate");
         keymap.bind("C-x d", "stack.dup");
         keymap.bind("M-i", "input.toggleModel");
+        keymap.bind("M-p", "plot.function");
     }
 
     private void onKey(KeyEvent event) {
@@ -247,6 +276,26 @@ public final class CalcWindow {
         } else if (result.outcome() != KeyDispatcher.Outcome.RAN) {
             setPrompt("›", false);
         }
+    }
+
+    /**
+     * A stack entry that is a plot, drawn rather than typeset.
+     *
+     * <p>Compiled here rather than at plot time so a resize or a theme change redraws from the same
+     * expression, and so a formula that cannot be evaluated numerically says why in the panel instead
+     * of failing the push.
+     */
+    private Region plotFor(Expr plot) {
+        PlotCanvas canvas = new PlotCanvas(STACK_PLOT_WIDTH, STACK_PLOT_HEIGHT);
+        try {
+            canvas.show(
+                    ExprCompiler.compile(PlotValue.body(plot), PlotValue.variable(plot)),
+                    PlotValue.xMin(plot),
+                    PlotValue.xMax(plot));
+        } catch (PlotException e) {
+            canvas.showMessage(e.getMessage());
+        }
+        return canvas;
     }
 
     // ---------------------------------------------------------------- machine access
@@ -394,7 +443,9 @@ public final class CalcWindow {
                     index.getStyleClass().add("inexact");
                 }
 
-                Region content = MathLayout.render(value, MathStyle.of(STACK_MATH_SIZE));
+                Region content = PlotValue.isPlot(value)
+                        ? plotFor(value)
+                        : MathLayout.render(value, MathStyle.of(STACK_MATH_SIZE));
                 content.getStyleClass().add("stack-value");
 
                 // Two boxes, because the rail and the formula want opposite alignments and one box

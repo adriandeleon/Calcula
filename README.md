@@ -82,6 +82,8 @@ Foundation complete and green (154 tests). The layers, innermost first:
 | `cas` + `calcula-cas-symja` | The engine seam and its Symja implementation |
 | `ui` | Window, chord translation, the Rule & Plate themes |
 | `ui.math` | Expr → JavaFX nodes: real two-dimensional typeset mathematics |
+| `plot` | Expr → double closure, sampler with pole breaks, viewport, ticks |
+| `ui.plot` | The canvas, with drag and scroll |
 
 Everything below `ui` is toolkit-free and unit-tested.
 
@@ -104,6 +106,23 @@ writes `calcula-app/target/math-sample.png` to look at.
 Every node carries its own subexpression, so `MathLayout.exprAt(node)` resolves a click to
 the exact subterm under it — which is what selection mode will be built on, and the one
 thing a rasterised formula could never support.
+
+### Plotting
+
+`M-p` draws the top of the stack. A plot is an ordinary stack value (`$Plot`), so it sits
+above the formula it came from, participates in the trail, and drops with the same key as
+a number — rather than opening a window and vanishing, as Calc's gnuplot output does.
+
+Curves are compiled to a `double` closure, not evaluated through the CAS: engine eval
+measured 0.38 ms/point, about 450 ms for one 1200-pixel frame, so dragging would be
+impossible. Poles break the polyline instead of being drawn through — `tan(x)` renders as
+separate branches. `mvn test -Dtest=PlotSampleFxTest` writes
+`calcula-app/target/plot-sample.png`.
+
+Still to do here: rendering Symja's own `Graphics` output (it already returns adaptively
+sampled `Line` primitives), and the symbolically-informed extras — exact asymptotes from
+`Solve(denominator = 0)`, exact critical points, shaded area labelled with the closed-form
+integral.
 
 ### Still open
 
