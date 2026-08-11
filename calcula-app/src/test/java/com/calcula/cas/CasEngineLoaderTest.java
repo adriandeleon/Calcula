@@ -51,12 +51,22 @@ class CasEngineLoaderTest {
     }
 
     @Test
+    void theFailureNamesThePathAndTheRemedy() {
+        // The message is the diagnosis. There is no fallback to another likely directory, so this text
+        // is all a user gets — it has to name where it looked and what to do.
+        CasException e =
+                assertThrows(CasException.class, () -> CasEngineLoader.load(Path.of("nowhere", "at", "all"), "x.Y"));
+        assertTrue(e.getMessage().contains("mvn package"), e.getMessage());
+    }
+
+    @Test
     void theUnavailableEngineIsUsableAsAValueAndExplainsItself() {
         CasEngine engine = CasEngineLoader.unavailable("no jars staged");
 
         assertFalse(engine.available());
         assertEquals("none", engine.id());
         assertEquals("unavailable", engine.version());
+        assertEquals("no jars staged", engine.diagnostic(), "the reason must survive to the UI");
         // Every operation fails the same way, so the UI needs no null check anywhere.
         assertTrue(assertThrows(CasException.class, () -> engine.eval(Exprs.of(1)))
                 .getMessage()

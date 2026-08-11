@@ -62,8 +62,15 @@
              publishes snapshots. Pin deliberately and re-check before a release. -->
         <matheclipse.version>3.0.0</matheclipse.version>
 
-        <!-- Where calcula-cas-symja stages its jars, and where the app looks for them in a dev run. -->
-        <cas.stage.dir>${maven.multiModuleProjectDirectory}/calcula-app/target/cas</cas.stage.dir>
+        <!--
+          Where calcula-cas-symja stages its jars, and where the app looks for them in a dev run.
+
+          Each module resolves this against its OWN basedir rather than a shared absolute path.
+          ${maven.multiModuleProjectDirectory} looks like the reactor root and is not: without a .mvn
+          marker directory it is simply wherever Maven was invoked from, so `mvn javafx:run` run from
+          inside calcula-app/ produced calcula-app/calcula-app/target/cas and the engine silently went
+          missing. Running from the root always worked, which is why it survived every check.
+        -->
     </properties>
 
     <build>

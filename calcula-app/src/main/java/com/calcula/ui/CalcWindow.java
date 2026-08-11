@@ -15,6 +15,7 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -130,7 +131,13 @@ public final class CalcWindow {
                     loaded.available() ? "CAS: " + loaded.id() + " " + loaded.version() : "CAS: unavailable");
             engineStatus.getStyleClass().removeAll("cas-ok", "cas-missing");
             engineStatus.getStyleClass().add(loaded.available() ? "cas-ok" : "cas-missing");
+            // "unavailable" on its own is a symptom, not a diagnosis. Put the reason where someone
+            // looking at the words "CAS: unavailable" will actually find it.
+            engineStatus.setTooltip(loaded.diagnostic().isBlank() ? null : new Tooltip(loaded.diagnostic()));
         });
+        if (!loaded.available() && !loaded.diagnostic().isBlank()) {
+            onMachine(m -> m.record(new TrailEntry(TrailEntry.Kind.NOTE, "no CAS: " + loaded.diagnostic())));
+        }
     }
 
     /**

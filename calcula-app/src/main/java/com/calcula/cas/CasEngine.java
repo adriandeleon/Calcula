@@ -30,6 +30,17 @@ public interface CasEngine extends AutoCloseable {
         return true;
     }
 
+    /**
+     * Why the engine is unavailable, or empty when it is fine.
+     *
+     * <p>Exists because "CAS: unavailable" in the mode line is not a diagnosis. The reason was written
+     * to the session log and nowhere a user would look, so answering "why?" meant reading a file — a
+     * question the application should be able to answer about itself.
+     */
+    default String diagnostic() {
+        return "";
+    }
+
     /** Evaluate and simplify an expression. */
     Expr eval(Expr input) throws CasException;
 

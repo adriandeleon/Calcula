@@ -126,7 +126,7 @@
                         <option>-XX:+UseG1GC</option>
                         <option>-XX:G1PeriodicGCInterval=30000</option>
                         <!-- In the packaged image this becomes $APPDIR/cas. -->
-                        <option>-Dcalcula.cas.dir=${cas.stage.dir}</option>
+                        <option>-Dcalcula.cas.dir=${project.basedir}/target/cas</option>
                     </options>
                 </configuration>
             </plugin>

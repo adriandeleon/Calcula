@@ -73,17 +73,15 @@ public final class CasEngineLoader {
 
     /** Load synchronously. Package-visible behaviour is fully covered by tests; see CasEngineLoaderTest. */
     public static CasEngine load(Path casDir, String implClassName) throws CasException {
-        List<URL> urls = jarUrls(casDir);
-        if (urls.isEmpty()) {
-            throw new CasException("no CAS jars found in " + casDir.toAbsolutePath());
-        }
+        Path resolved = resolveDirectory(casDir);
+        List<URL> urls = jarUrls(resolved);
         // Parent = the loader that defined CasEngine, so the impl links against OUR interface.
         URLClassLoader loader =
                 new URLClassLoader("calcula-cas", urls.toArray(URL[]::new), CasEngine.class.getClassLoader());
         try {
             Class<?> impl = Class.forName(implClassName, true, loader);
             CasEngine delegate = (CasEngine) impl.getDeclaredConstructor().newInstance();
-            LOG.info(() -> "CAS engine loaded: " + delegate.id() + " " + delegate.version() + " from " + casDir);
+            LOG.info(() -> "CAS engine loaded: " + delegate.id() + " " + delegate.version() + " from " + resolved);
             return new ManagedEngine(delegate, loader);
         } catch (ClassCastException e) {
             closeQuietly(loader);
@@ -102,6 +100,27 @@ public final class CasEngineLoader {
     /** A engine-shaped placeholder used when nothing could be loaded, so the UI has no null case. */
     public static CasEngine unavailable(String reason) {
         return new UnavailableEngine(reason == null ? "no engine" : reason);
+    }
+
+    /**
+     * Check the configured directory actually holds jars, and say what to do when it does not.
+     *
+     * <p>There is deliberately NO fallback to some other likely location. A guess would depend on the
+     * working directory, which is precisely the implicit dependency that caused the staging path to
+     * resolve wrongly in the first place — and it would have hidden that bug rather than exposed it.
+     * The fix for a misconfigured path is the configuration; the job here is to fail in a way that
+     * names the path and the remedy.
+     */
+    static Path resolveDirectory(Path casDir) throws CasException {
+        if (casDir != null && !jarUrls(casDir).isEmpty()) {
+            return casDir;
+        }
+        throw new CasException("no CAS jars found in " + describe(casDir)
+                + " — run `mvn package` from the project root to stage them");
+    }
+
+    private static String describe(Path dir) {
+        return dir == null ? "(no directory configured)" : dir.toAbsolutePath().toString();
     }
 
     /** Every {@code *.jar} directly inside {@code dir}, sorted for a reproducible classpath order. */
@@ -186,6 +205,11 @@ public final class CasEngineLoader {
         @Override
         public boolean available() {
             return false;
+        }
+
+        @Override
+        public String diagnostic() {
+            return reason;
         }
 
         @Override

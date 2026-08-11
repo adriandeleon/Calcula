@@ -8,7 +8,8 @@ buttons anywhere. Input is keystrokes with prefix dispatch.
 
 ## Commands
 
-- Run: `mvn -pl calcula-app javafx:run` (needs a prior `mvn package` so the CAS jars are staged)
+- Run: `mvn -pl calcula-app javafx:run` (needs a prior `mvn package` so the CAS jars are staged;
+  works from the reactor root or from inside `calcula-app/`)
 - Test: `mvn verify` — or `mvn test -DexcludedGroups=fx` for the pure suite alone
 - Format: `mvn spotless:apply` **before committing** — `spotless:check` runs at `verify`
 
