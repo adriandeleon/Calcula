@@ -1,0 +1,86 @@
+# Calcula
+
+A keyboard-driven symbolic calculator in the spirit of Emacs Calc. JDK 25 + JavaFX 26, Maven, modular
+(JPMS, module `com.calcula`).
+
+The stack is a document, not a display: four regions — trail, stack, mode line, echo area — and no
+buttons anywhere. Input is keystrokes with prefix dispatch.
+
+## Commands
+
+- Run: `mvn -pl calcula-app javafx:run` (needs a prior `mvn package` so the CAS jars are staged)
+- Test: `mvn verify` — or `mvn test -DexcludedGroups=fx` for the pure suite alone
+- Format: `mvn spotless:apply` **before committing** — `spotless:check` runs at `verify`
+
+## Layout
+
+```
+calcula-app/         modular, jlink'd. Owns the CasEngine INTERFACE.
+calcula-cas-symja/   plain non-modular jar. Owns the Symja IMPLEMENTATION.
+```
+
+The split is load-bearing. `calcula-app` does **not** depend on `calcula-cas-symja`; the engine is
+discovered at runtime by `CasEngineLoader` through a `URLClassLoader` whose parent is the app's own
+loader, and its jars live on the classpath, never the module path.
+
+### Why
+
+`matheclipse-core` resolves to **58 jars, 40 MB**, of which only **9** carry a real `module-info.class`
+— 23 have just an `Automatic-Module-Name` and 26 have nothing at all. Putting that on the module path
+means hand-writing ~49 moditect descriptors, including:
+
+- the Guava trio (`jsr305` split-packaging `javax.annotation`, plus the empty
+  `listenablefuture-9999.0-empty-to-avoid-conflict-with-guava` jar),
+- `commons-logging`, whose `requires` jlink silently drops under `--ignore-missing-deps`,
+- `pdfbox 2.0.26`, pulled in because choco-solver depends on xchart which depends on a PDF writer.
+
+Classpath classes live in the unnamed module and need no descriptors at all, so none of that applies.
+
+It also keeps the licence boundary clean. Symja's core/parser/external are **LGPL v3**, as is the
+transitively-pulled JAS, while Calcula is MIT. Shipping them as replaceable jars in a plain `cas/`
+directory satisfies the LGPL's relink requirement in the simplest available form — drop in a different
+jar, restart. See `NOTICE`.
+
+### Rules for the seam
+
+- The CAS is a **capability, not a precondition**. `CasEngineLoader.unavailable(...)` returns a
+  working null-object so the window opens and stays usable with no engine; the mode line says so.
+- Load **off the FX thread**. Symja's static init measures ~650 ms, and the first `Integrate` another
+  ~650 ms while the Rubi rule set warms.
+- The CAS jar must depend on `calcula-app` at **`provided`** scope. Bundling a second copy of
+  `CasEngine` loads it in two loaders, and the cast fails with a `ClassCastException` naming the same
+  class on both sides.
+- `com.calcula.cas` must be exported **unqualified** — the unnamed module cannot read a qualified
+  `exports ... to`, and the failure looks like a missing jar rather than a missing export.
+
+## Status
+
+Scaffolding. Verified working end to end: the modular app loads the non-modular Symja tree, evaluates
+through it, and returns exact results (`1/2 + 1/3` → `5/6`, `∫√(1-x²)dx` → `x√(1-x²)/2 + arcsin(x)/2`),
+plus TeX and presentation-MathML output.
+
+Not built yet, in intended order:
+
+1. `Expr` tree + parser + linear formatter — pure, unit-tested. Keep it **structurally identical** to
+   Symja's shape (atom | symbol | `Call(String head, List<Expr>)` | list) so conversion is total and a
+   head we never modelled round-trips as a generic `Call`.
+2. Stack machine (immutable `CalcState`, undo as a bounded deque) + prefix keymap engine.
+3. Native math layout: one JavaFX `Node` per subexpression, so selection mode (`j`) can hit-test a
+   subterm. Needs TeX's rules to look right — math italic vs upright, the 100/70/50 script cascade,
+   spacing by operator class. Stretchy delimiters as `Path`, since JavaFX can't read OpenType MATH.
+4. Plotting: render Symja's returned `Graphics` primitives on a `Canvas` for static plots; compile
+   `Expr` → `DoubleUnaryOperator` for interactive pan/zoom (CAS eval is 0.38 ms/point — far too slow
+   for a frame).
+5. Multi-flavour clipboard: MathML + LaTeX + PNG on one copy.
+6. Packaging (`-Pdist`): moditect for the app's own few automatic modules, jpackage, AOT training, and
+   a step that stages `cas/*.jar` into the app image beside the launcher.
+
+## Notes
+
+- `-Dcalcula.cas.dir` names the CAS directory; the dev run points it at `calcula-app/target/cas`, and
+  the packaged app will point it at `$APPDIR/cas`.
+- `-Dcalcula.config.dir` overrides `~/.calcula`, which holds `calcula-session.log` — a delivered app has
+  no stderr anyone will read.
+- `java.awt.headless=true` is the first statement of `main` and must stay there: anything that later
+  touches Java2D (plot rasterisation, JLaTeXMath) otherwise makes the macOS AWT pipeline contend with
+  JavaFX's Glass for the AppKit run loop, and the app intermittently deadlocks.

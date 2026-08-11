@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The modular application. Everything here is jlink-able: JavaFX, AtlantaFX, and our own code.
+
+  It must NOT depend on calcula-cas-symja. The CAS arrives at runtime through CasEngineLoader; see
+  the reactor root pom for why.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.calcula</groupId>
+        <artifactId>calcula-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>calcula-app</artifactId>
+    <packaging>jar</packaging>
+    <name>Calcula App</name>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.mkpaz</groupId>
+            <artifactId>atlantafx-base</artifactId>
+            <version>${atlantafx.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Drives the toolkit lifecycle only; the robot is deliberately unused. -->
+        <dependency>
+            <groupId>org.testfx</groupId>
+            <artifactId>testfx-junit5</artifactId>
+            <version>${testfx.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!--
+          Two entries over one directory so exactly ONE file is filtered. Filtering all of
+          src/main/resources would push icons and fonts through token substitution and corrupt them.
+        -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>com/calcula/build-info.properties</exclude>
+                </excludes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>com/calcula/build-info.properties</include>
+                </includes>
+            </resource>
+        </resources>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Classpath (unnamed module), not module path: the headless-FX harness expects it,
+                         and reflective reads of private fields need setAccessible to work freely. -->
+                    <useModulePath>false</useModulePath>
+                    <!-- @{argLine} carries JaCoCo's injected agent. A plain <argLine> clobbers it and
+                         SILENTLY disables coverage while every test still passes. -->
+                    <argLine>@{argLine}</argLine>
+                    <systemPropertyVariables>
+                        <!-- JavaFX 26's built-in Headless Glass platform: no Monocle, no display, no xvfb. -->
+                        <glass.platform>Headless</glass.platform>
+                        <prism.order>sw</prism.order>
+                        <java.awt.headless>true</java.awt.headless>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals><goal>report</goal></goals>
+                    </execution>
+                    <!--
+                      No coverage FLOOR yet, on purpose: a floor is a regression net, and there is nothing
+                      to regress from until the pure packages (expr, parse, simplify) exist. Add one rule
+                      per pure package as each lands, set below the measured value, and ratchet upward.
+                      Never lower one to make a build pass.
+                    -->
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>${javafx.plugin.version}</version>
+                <configuration>
+                    <mainClass>com.calcula/com.calcula.App</mainClass>
+                    <!-- Mirror the packaged runtime's options so dev == production. -->
+                    <options>
+                        <option>-Dprism.maxvram=2G</option>
+                        <option>-Dprism.maxTextureSize=16384</option>
+                        <option>-Xmx2g</option>
+                        <option>-XX:+UseG1GC</option>
+                        <option>-XX:G1PeriodicGCInterval=30000</option>
+                        <!-- In the packaged image this becomes $APPDIR/cas. -->
+                        <option>-Dcalcula.cas.dir=${cas.stage.dir}</option>
+                    </options>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

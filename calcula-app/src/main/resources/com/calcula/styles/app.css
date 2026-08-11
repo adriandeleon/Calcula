@@ -1,0 +1,100 @@
+/*
+ * Calcula chrome. Colours come from AtlantaFX's semantic -color-* variables rather than literals, so
+ * the whole window follows a theme switch without a per-theme override file.
+ */
+
+.calc-root {
+    -fx-background-color: -color-bg-default;
+}
+
+/* ---- stack ------------------------------------------------------------- */
+
+.stack-view {
+    -fx-background-color: -color-bg-default;
+    -fx-border-width: 0;
+}
+
+.stack-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-padding: 3 12 3 12;
+}
+
+.stack-view .list-cell:selected {
+    -fx-background-color: -color-accent-subtle;
+}
+
+.stack-index {
+    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+    -fx-font-size: 12px;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.stack-value {
+    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+    -fx-font-size: 14px;
+    -fx-text-fill: -color-fg-default;
+}
+
+/* ---- trail ------------------------------------------------------------- */
+
+.trail-view {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-width: 0;
+}
+
+.trail-view .list-cell {
+    -fx-background-color: transparent;
+    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-muted;
+    -fx-padding: 1 10 1 10;
+}
+
+/* ---- mode line --------------------------------------------------------- */
+
+.mode-line {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 1 0 1 0;
+    -fx-padding: 3 12 3 12;
+}
+
+.mode-item {
+    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.cas-ok {
+    -fx-text-fill: -color-success-fg;
+}
+
+.cas-missing {
+    -fx-text-fill: -color-danger-fg;
+}
+
+/* ---- echo area --------------------------------------------------------- */
+
+.echo-area {
+    -fx-background-color: -color-bg-default;
+    -fx-padding: 6 12 8 12;
+}
+
+.echo-prompt {
+    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+    -fx-font-size: 15px;
+    -fx-text-fill: -color-accent-fg;
+}
+
+.echo-input {
+    -fx-font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
+    -fx-font-size: 14px;
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+    -fx-padding: 2 0 2 0;
+}
+
+.echo-input:focused {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+}

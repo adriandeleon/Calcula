@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Calcula — reactor root.
+
+  Two modules, and the split is load-bearing rather than cosmetic:
+
+    calcula-app         modular (JPMS), jlink'd into the native image. Owns the CasEngine INTERFACE.
+    calcula-cas-symja   plain non-modular jar. Owns the Symja IMPLEMENTATION, and is deliberately
+                        NOT a dependency of calcula-app — it is discovered at runtime through a
+                        URLClassLoader and lives on the classpath, never the module path.
+
+  Why: matheclipse-core drags in 58 jars, of which only 9 carry a real module-info. Putting them on
+  the module path means hand-writing ~49 moditect descriptors, including the Guava/jsr305 split-package
+  mess and the commons-logging jar that jlink silently prunes. Loading them from a classpath directory
+  sidesteps all of it — classpath classes live in the unnamed module, which needs no descriptors.
+
+  It also happens to satisfy Symja's LGPL relink obligation in the cleanest available form: the jars
+  sit in a plain directory the user can replace.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.calcula</groupId>
+    <artifactId>calcula-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Calcula</name>
+    <description>A keyboard-driven symbolic calculator in the spirit of Emacs Calc</description>
+    <url>https://github.com/adriandeleon/Calcula</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <modules>
+        <module>calcula-app</module>
+        <module>calcula-cas-symja</module>
+    </modules>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>25</maven.compiler.release>
+
+        <javafx.version>26.0.1</javafx.version>
+        <javafx.plugin.version>0.0.8</javafx.plugin.version>
+        <atlantafx.version>2.1.0</atlantafx.version>
+        <junit.version>5.11.4</junit.version>
+        <testfx.version>4.0.18</testfx.version>
+        <!-- 0.8.13+ required: 0.8.12 cannot read class file major version 69 and dies on module-info.class. -->
+        <jacoco.version>0.8.13</jacoco.version>
+        <spotless.version>3.6.0</spotless.version>
+        <palantir.version>2.92.0</palantir.version>
+
+        <!-- Latest RELEASE on Maven Central is 3.0.0 (Nov 2023); the GitHub project is active but
+             publishes snapshots. Pin deliberately and re-check before a release. -->
+        <matheclipse.version>3.0.0</matheclipse.version>
+
+        <!-- Where calcula-cas-symja stages its jars, and where the app looks for them in a dev run. -->
+        <cas.stage.dir>${maven.multiModuleProjectDirectory}/calcula-app/target/cas</cas.stage.dir>
+    </properties>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <version>3.8.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.2</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${spotless.version}</version>
+                <configuration>
+                    <!-- Pinned: the default policy asks git for the platform's endings and answers CRLF on
+                         Windows against an LF checkout, failing with a diff whose sides read identically. -->
+                    <lineEndings>UNIX</lineEndings>
+                    <java>
+                        <includes>
+                            <include>src/main/java/**/*.java</include>
+                            <include>src/test/java/**/*.java</include>
+                        </includes>
+                        <removeUnusedImports/>
+                        <palantirJavaFormat>
+                            <version>${palantir.version}</version>
+                        </palantirJavaFormat>
+                        <!-- Longest-prefix wins, so javafx is not swallowed by java. -->
+                        <importOrder>
+                            <order>java|javax,javafx,,\#</order>
+                        </importOrder>
+                        <toggleOffOn/>
+                    </java>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals><goal>check</goal></goals>
+                        <phase>verify</phase>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

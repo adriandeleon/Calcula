@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The Symja-backed CasEngine implementation.
+
+  Deliberately NON-modular: no module-info, and nothing here ever reaches the module path. It compiles
+  against calcula-app purely for the CasEngine interface (provided scope — at runtime the interface
+  comes from the app's own module, which is exactly what makes the cross-loader cast work).
+
+  `mvn package` stages this jar plus its whole runtime tree into calcula-app/target/cas, which is where
+  CasEngineLoader looks during a dev run.
+
+  LICENSING: matheclipse-core, -parser and -external are LGPL v3, as is the transitively-pulled JAS.
+  Shipping them as replaceable jars in a plain directory is what keeps that obligation cheap; see NOTICE.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.calcula</groupId>
+        <artifactId>calcula-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>calcula-cas-symja</artifactId>
+    <packaging>jar</packaging>
+    <name>Calcula CAS (Symja)</name>
+
+    <dependencies>
+        <!-- provided: the interface is supplied by the app module at runtime, never bundled here.
+             Bundling a second copy would load CasEngine in two loaders and the cast would fail with a
+             ClassCastException naming the same class twice — the classic and very confusing symptom. -->
+        <dependency>
+            <groupId>com.calcula</groupId>
+            <artifactId>calcula-app</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.matheclipse</groupId>
+            <artifactId>matheclipse-core</artifactId>
+            <version>${matheclipse.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>stage-cas-runtime</id>
+                        <phase>package</phase>
+                        <goals><goal>copy-dependencies</goal></goals>
+                        <configuration>
+                            <outputDirectory>${cas.stage.dir}</outputDirectory>
+                            <includeScope>runtime</includeScope>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>stage-cas-jar</id>
+                        <phase>package</phase>
+                        <goals><goal>copy</goal></goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>${project.groupId}</groupId>
+                                    <artifactId>${project.artifactId}</artifactId>
+                                    <version>${project.version}</version>
+                                    <outputDirectory>${cas.stage.dir}</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

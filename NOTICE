@@ -1,0 +1,33 @@
+Calcula
+Copyright (c) 2026 Adrián Arturo De León Saldivar
+Licensed under the MIT License (see LICENSE).
+
+--------------------------------------------------------------------------------
+Third-party components
+--------------------------------------------------------------------------------
+
+Calcula itself is MIT. The computer algebra engine it loads at runtime is not, and
+is kept at arm's length for exactly that reason.
+
+Symja / matheclipse — https://github.com/axkr/symja_android_library
+    matheclipse-core, matheclipse-parser, matheclipse-external
+    GNU Lesser General Public License v3 (LGPL-3.0)
+
+JAS (Java Algebra System) — https://krum.rz.uni-mannheim.de/jas/
+    Pulled in transitively by Symja.
+    GNU Lesser General Public License
+
+These are NOT linked into the application. They ship as ordinary jars in the
+`cas/` directory beside the executable and are loaded through a URLClassLoader at
+runtime. A user may replace any of them with a modified build by dropping a
+different jar into that directory and restarting — which is how Calcula satisfies
+the LGPL's relink requirement.
+
+Source for the versions shipped is available from the upstream projects above.
+
+Also bundled:
+
+JavaFX — https://openjfx.io/            GPL v2 with the Classpath Exception
+AtlantaFX — https://github.com/mkpaz/atlantafx    MIT License
+Apfloat — https://www.apfloat.org/      MIT License (via Symja)
+Hipparchus — https://hipparchus.org/    Apache License 2.0 (via Symja)
