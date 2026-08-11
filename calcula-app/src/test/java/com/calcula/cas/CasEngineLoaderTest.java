@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import com.calcula.expr.Exprs;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -57,11 +58,11 @@ class CasEngineLoaderTest {
         assertEquals("none", engine.id());
         assertEquals("unavailable", engine.version());
         // Every operation fails the same way, so the UI needs no null check anywhere.
-        assertTrue(assertThrows(CasException.class, () -> engine.eval("1+1"))
+        assertTrue(assertThrows(CasException.class, () -> engine.eval(Exprs.of(1)))
                 .getMessage()
                 .contains("no jars staged"));
-        assertThrows(CasException.class, () -> engine.texForm("1+1"));
-        assertThrows(CasException.class, () -> engine.mathmlForm("1+1"));
+        assertThrows(CasException.class, () -> engine.texForm(Exprs.of(1)));
+        assertThrows(CasException.class, () -> engine.mathmlForm(Exprs.of(1)));
     }
 
     @Test

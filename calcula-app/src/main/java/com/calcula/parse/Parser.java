@@ -62,7 +62,20 @@ public final class Parser {
     // ------------------------------------------------------------------ grammar
 
     private Expr expression() {
-        return relational();
+        return rule();
+    }
+
+    /**
+     * {@code x -> 1}, the shape every {@code Solve} result comes back in. Right-associative and looser
+     * than anything else, so {@code x -> a + b} groups the way it reads.
+     */
+    private Expr rule() {
+        Expr left = relational();
+        if (peek().kind() == Kind.OP && peek().text().equals("->")) {
+            next();
+            return Exprs.call("Rule", left, rule());
+        }
+        return left;
     }
 
     private Expr relational() {

@@ -70,6 +70,8 @@ public final class Names {
         map("gcd", "GCD");
         map("lcm", "LCM");
         map("mod", "Mod");
+        // Matrix/vector product. `*` is elementwise here, as in Mathematica.
+        map("dot", "Dot");
         map("factorial", "Factorial");
         map("binomial", "Binomial");
 

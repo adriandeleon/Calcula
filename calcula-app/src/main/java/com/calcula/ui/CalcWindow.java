@@ -23,6 +23,10 @@ import javafx.scene.layout.VBox;
 import com.calcula.AppInfo;
 import com.calcula.cas.CasEngine;
 import com.calcula.cas.CasEngineLoader;
+import com.calcula.expr.Expr;
+import com.calcula.parse.Formatter;
+import com.calcula.parse.ParseException;
+import com.calcula.parse.Parser;
 
 /**
  * The main window: trail on the left, stack in the centre, mode line and echo area along the bottom.
@@ -40,9 +44,9 @@ public final class CalcWindow {
     private static final int MAX_TRAIL = 500;
 
     private final BorderPane root = new BorderPane();
-    private final ObservableList<String> stack = FXCollections.observableArrayList();
+    private final ObservableList<Expr> stack = FXCollections.observableArrayList();
     private final ObservableList<String> trail = FXCollections.observableArrayList();
-    private final ListView<String> stackView = new ListView<>(stack);
+    private final ListView<Expr> stackView = new ListView<>(stack);
     private final ListView<String> trailView = new ListView<>(trail);
     private final Label modes = new Label("deg  prec 12  symb");
     private final Label engineStatus = new Label("CAS: loading…");
@@ -111,7 +115,7 @@ public final class CalcWindow {
         stackView.getStyleClass().add("stack-view");
         stackView.setCellFactory(v -> new ListCell<>() {
             @Override
-            protected void updateItem(String value, boolean empty) {
+            protected void updateItem(Expr value, boolean empty) {
                 super.updateItem(value, empty);
                 if (empty || value == null) {
                     setGraphic(null);
@@ -123,7 +127,7 @@ public final class CalcWindow {
                 index.setMinWidth(38);
                 index.setAlignment(Pos.CENTER_RIGHT);
 
-                Label content = new Label(value);
+                Label content = new Label(Formatter.format(value));
                 content.getStyleClass().add("stack-value");
 
                 HBox row = new HBox(10, index, content);
@@ -134,7 +138,7 @@ public final class CalcWindow {
         });
         // Renumbering is a whole-list property: dropping entry 3 changes what every entry below is
         // called, so a targeted refresh would be wrong.
-        stack.addListener((javafx.collections.ListChangeListener<String>) c -> {
+        stack.addListener((javafx.collections.ListChangeListener<Expr>) c -> {
             stackView.refresh();
             if (!stack.isEmpty()) {
                 stackView.scrollTo(stack.size() - 1);
@@ -175,30 +179,39 @@ public final class CalcWindow {
             duplicateTop(); // Calc: bare Enter duplicates the top of the stack.
             return;
         }
+        Expr parsed;
+        try {
+            parsed = Parser.parse(text);
+        } catch (ParseException e) {
+            // Parsing is ours and instant, so report it here rather than paying a round trip to find
+            // out the engine cannot read it either.
+            appendTrail(text);
+            appendTrail("  ! " + e.getMessage());
+            return;
+        }
         input.clear();
         CasEngine current = engine;
         prompt.setText("…");
         worker.execute(() -> {
-            String result;
-            boolean failed = false;
+            Expr value = null;
+            String error = null;
             try {
-                result = current.eval(text);
+                value = current.eval(parsed);
             } catch (Exception e) {
-                result = e.getMessage();
-                failed = true;
+                error = e.getMessage();
             }
-            String value = result;
-            boolean error = failed;
+            Expr result = value;
+            String failure = error;
             Platform.runLater(() -> {
                 prompt.setText("›");
                 appendTrail(text);
-                if (error) {
-                    appendTrail("  ! " + value);
+                if (failure != null) {
+                    appendTrail("  ! " + failure);
                     input.setText(text); // give the input back so it can be corrected
                     input.positionCaret(text.length());
                 } else {
-                    appendTrail("  = " + value);
-                    stack.add(value);
+                    appendTrail("  = " + Formatter.format(result));
+                    stack.add(result);
                 }
             });
         });
@@ -225,8 +238,13 @@ public final class CalcWindow {
     }
 
     /** Visible for tests: the stack from bottom to top. */
-    public List<String> stackContents() {
+    public List<Expr> stackContents() {
         return List.copyOf(stack);
+    }
+
+    /** Visible for tests: the stack as it is displayed. */
+    public List<String> stackDisplay() {
+        return stack.stream().map(Formatter::format).toList();
     }
 
     /** Visible for tests. */

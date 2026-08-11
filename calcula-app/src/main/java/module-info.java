@@ -16,6 +16,9 @@ module com.calcula {
 
     exports com.calcula;
 
+    // Read by the out-of-module CAS implementation, which trades in Expr.
+    exports com.calcula.expr;
+
     // Read by the out-of-module CAS implementation. Must stay unqualified — see above.
     exports com.calcula.cas;
 }

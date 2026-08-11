@@ -14,6 +14,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
 
+import com.calcula.expr.Expr;
+
 /**
  * Loads a {@link CasEngine} from a directory of ordinary jars, using a child {@link URLClassLoader}
  * whose parent is this module's loader.
@@ -148,17 +150,17 @@ public final class CasEngineLoader {
         }
 
         @Override
-        public String eval(String input) throws CasException {
+        public Expr eval(Expr input) throws CasException {
             return delegate.eval(input);
         }
 
         @Override
-        public String texForm(String input) throws CasException {
+        public String texForm(Expr input) throws CasException {
             return delegate.texForm(input);
         }
 
         @Override
-        public String mathmlForm(String input) throws CasException {
+        public String mathmlForm(Expr input) throws CasException {
             return delegate.mathmlForm(input);
         }
 
@@ -187,17 +189,17 @@ public final class CasEngineLoader {
         }
 
         @Override
-        public String eval(String input) throws CasException {
+        public Expr eval(Expr input) throws CasException {
             throw new CasException("CAS unavailable: " + reason);
         }
 
         @Override
-        public String texForm(String input) throws CasException {
+        public String texForm(Expr input) throws CasException {
             throw new CasException("CAS unavailable: " + reason);
         }
 
         @Override
-        public String mathmlForm(String input) throws CasException {
+        public String mathmlForm(Expr input) throws CasException {
             throw new CasException("CAS unavailable: " + reason);
         }
     }

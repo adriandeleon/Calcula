@@ -2,6 +2,7 @@ package com.calcula.cas.symja;
 
 import com.calcula.cas.CasEngine;
 import com.calcula.cas.CasException;
+import com.calcula.expr.Expr;
 import org.matheclipse.core.eval.ExprEvaluator;
 import org.matheclipse.core.expression.F;
 import org.matheclipse.core.interfaces.IExpr;
@@ -18,9 +19,11 @@ import org.matheclipse.core.interfaces.IExpr;
 public final class SymjaEngine implements CasEngine {
 
     private final ExprEvaluator evaluator;
+    private final ExprAdapter adapter;
 
     public SymjaEngine() {
         this.evaluator = new ExprEvaluator();
+        this.adapter = new ExprAdapter(evaluator);
     }
 
     @Override
@@ -36,37 +39,37 @@ public final class SymjaEngine implements CasEngine {
     }
 
     @Override
-    public synchronized String eval(String input) throws CasException {
-        return evaluate(input).toString();
+    public synchronized Expr eval(Expr input) throws CasException {
+        return adapter.fromSymja(evaluate(input));
     }
 
     @Override
-    public synchronized String texForm(String input) throws CasException {
-        // Evaluate FIRST, then format the result. Formatting the source text instead lets the formatting
-        // head hold its argument unevaluated: TeXForm(Integrate(...)) renders the solved integral but
-        // MathMLForm(Integrate(...)) renders the ∫ sign, which is a confusing way to find out.
+    public synchronized String texForm(Expr input) throws CasException {
+        // Evaluate FIRST, then format the result. Formatting the source instead lets the formatting head
+        // hold its argument unevaluated: TeXForm(Integrate(...)) renders the solved integral but
+        // MathMLForm(Integrate(...)) renders the ∫ sign, which is a confusing way to find that out.
         return format(F.TeXForm(evaluate(input)));
     }
 
     @Override
-    public synchronized String mathmlForm(String input) throws CasException {
+    public synchronized String mathmlForm(Expr input) throws CasException {
         // Presentation MathML, with an XML declaration and a MathML 2.0 DOCTYPE the caller will want to
         // strip before embedding. Matrices come back as nested {…} sets rather than <mtable>; TeXForm
         // gets those right, so prefer TeX for matrices until we emit our own MathML.
         return format(F.MathMLForm(evaluate(input)));
     }
 
-    private IExpr evaluate(String input) throws CasException {
-        if (input == null || input.isBlank()) {
-            throw new CasException("empty expression");
+    private IExpr evaluate(Expr input) throws CasException {
+        if (input == null) {
+            throw new CasException("nothing to evaluate");
         }
         try {
-            return evaluator.eval(input);
+            return evaluator.eval(adapter.toSymja(input));
         } catch (RuntimeException e) {
             throw new CasException(message(e), e);
         } catch (StackOverflowError e) {
-            // A CAS recurses deeply on pathological input; this is a normal user-facing outcome here,
-            // not a bug, so it must not escape as an Error and kill the FX thread.
+            // A CAS recurses deeply on pathological input; here that is a normal user-facing outcome
+            // rather than a bug, so it must not escape as an Error and take the FX thread with it.
             throw new CasException("expression too deeply nested", e);
         }
     }

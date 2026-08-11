@@ -8,6 +8,8 @@ import javafx.scene.control.TextField;
 
 import com.calcula.cas.CasEngine;
 import com.calcula.cas.CasException;
+import com.calcula.expr.Expr;
+import com.calcula.expr.Exprs;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -27,21 +29,21 @@ class CalcWindowFxTest {
     /** A stand-in engine, so the UI is tested without paying Symja's ~650 ms start-up. */
     private record StubEngine(String id, String version) implements CasEngine {
         @Override
-        public String eval(String input) throws CasException {
-            if ("boom".equals(input)) {
-                throw new CasException("bad syntax");
+        public Expr eval(Expr input) throws CasException {
+            if (Exprs.isSymbol(input, "boom")) {
+                throw new CasException("engine says no");
             }
-            return "<" + input + ">";
+            return input; // identity, so assertions read as the notation that went in
         }
 
         @Override
-        public String texForm(String input) {
-            return "\\text{" + input + "}";
+        public String texForm(Expr input) {
+            return "\\text{tex}";
         }
 
         @Override
-        public String mathmlForm(String input) {
-            return "<mi>" + input + "</mi>";
+        public String mathmlForm(Expr input) {
+            return "<mi>mathml</mi>";
         }
     }
 
@@ -73,8 +75,9 @@ class CalcWindowFxTest {
                 5000,
                 () -> !window.stackContents().isEmpty());
 
-        assertEquals(List.of("<2+3>"), FxTestSupport.callOnFx(window::stackContents));
-        assertEquals(List.of("2+3", "  = <2+3>"), FxTestSupport.callOnFx(window::trailContents));
+        // Typed as 2+3, stored as a tree, displayed through the formatter.
+        assertEquals(List.of("2 + 3"), FxTestSupport.callOnFx(window::stackDisplay));
+        assertEquals(List.of("2+3", "  = 2 + 3"), FxTestSupport.callOnFx(window::trailContents));
         FxTestSupport.runOnFx(window::dispose);
     }
 
@@ -92,7 +95,7 @@ class CalcWindowFxTest {
 
         // Nothing pushed: a syntax error must not silently leave a bogus entry behind.
         assertTrue(FxTestSupport.callOnFx(window::stackContents).isEmpty());
-        assertTrue(FxTestSupport.callOnFx(window::trailContents).get(1).contains("bad syntax"));
+        assertTrue(FxTestSupport.callOnFx(window::trailContents).get(1).contains("engine says no"));
 
         TextField input =
                 (TextField) FxTestSupport.callOnFx(() -> window.getRoot().lookup(".echo-input"));
@@ -129,11 +132,11 @@ class CalcWindowFxTest {
 
         // Backing order is bottom-to-top, so the LAST element is stack entry 1: — what Calc draws
         // nearest the input line.
-        assertEquals(List.of("<a>", "<b>", "<c>"), FxTestSupport.callOnFx(window::stackContents));
+        assertEquals(List.of("a", "b", "c"), FxTestSupport.callOnFx(window::stackDisplay));
 
         @SuppressWarnings("unchecked")
-        ListView<String> stack =
-                (ListView<String>) FxTestSupport.callOnFx(() -> window.getRoot().lookup(".stack-view"));
+        ListView<Expr> stack =
+                (ListView<Expr>) FxTestSupport.callOnFx(() -> window.getRoot().lookup(".stack-view"));
         assertEquals(3, FxTestSupport.callOnFx(() -> stack.getItems().size()));
         FxTestSupport.runOnFx(window::dispose);
     }

@@ -127,7 +127,11 @@ final class Lexer {
                 // Two-character operators first, or <= lexes as < followed by =.
                 if (i + 1 < src.length()) {
                     String two = src.substring(i, i + 2);
-                    if (two.equals("<=") || two.equals(">=") || two.equals("!=") || two.equals("==")) {
+                    if (two.equals("<=")
+                            || two.equals(">=")
+                            || two.equals("!=")
+                            || two.equals("==")
+                            || two.equals("->")) {
                         i += 2;
                         return new Token(Kind.OP, two, start);
                     }

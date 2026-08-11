@@ -1,5 +1,7 @@
 package com.calcula.cas;
 
+import com.calcula.expr.Expr;
+
 /**
  * The seam between Calcula and whatever computer algebra system is doing the work.
  *
@@ -7,11 +9,10 @@ package com.calcula.cas;
  * outside the module graph, on the classpath, and is reached through {@link CasEngineLoader} — which is
  * what keeps ~49 non-modular jars off the module path and out of jlink's way.
  *
- * <p>Deliberately string-in / string-out for now. The typed {@code Expr} tree comes next, and when it
- * does it must stay <em>structurally identical</em> to Symja's own shape — atom, symbol, {@code
- * Call(String head, List&lt;Expr&gt;)}, list — so conversion in both directions is total. A head we have
- * never modelled then round-trips as a generic {@code Call} instead of throwing, which is what makes
- * swapping engines later a real option rather than a stated intention.
+ * <p>It trades in {@link Expr}, not strings. Handing the engine text would mean the user's notation had
+ * to be the engine's notation, and every swap of engine would be a change of surface syntax. Because
+ * {@code Expr} is shaped like Symja's own tree — atom, symbol, call with a String head — conversion in
+ * both directions is total, and a head we have never modelled round-trips untouched.
  */
 public interface CasEngine extends AutoCloseable {
 
@@ -29,14 +30,14 @@ public interface CasEngine extends AutoCloseable {
         return true;
     }
 
-    /** Evaluate an expression in the engine's surface syntax and return its printed form. */
-    String eval(String input) throws CasException;
+    /** Evaluate and simplify an expression. */
+    Expr eval(Expr input) throws CasException;
 
-    /** Render an expression as LaTeX. */
-    String texForm(String input) throws CasException;
+    /** Render as LaTeX. Evaluates first, so what is rendered is the answer rather than the question. */
+    String texForm(Expr input) throws CasException;
 
-    /** Render an expression as presentation MathML. */
-    String mathmlForm(String input) throws CasException;
+    /** Render as presentation MathML. */
+    String mathmlForm(Expr input) throws CasException;
 
     @Override
     default void close() {}
