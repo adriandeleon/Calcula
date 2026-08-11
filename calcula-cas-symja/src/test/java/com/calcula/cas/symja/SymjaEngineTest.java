@@ -173,6 +173,23 @@ class SymjaEngineTest {
     }
 
     @Test
+    void theEnginesInfinitiesAreSaidTheWayAPersonWould() throws Exception {
+        // 1/0 answered DirectedInfinity() and log(0) answered DirectedInfinity(-1) — the engine's
+        // encoding of an infinity plus the direction it is approached from, on the stack where nobody
+        // can read it. Translated in the adapter, so every renderer inherits it.
+        assertEquals("ComplexInfinity", eval("1/0"));
+        assertEquals("-infinity", eval("log(0)"));
+        assertEquals("infinity", eval("infinity"));
+    }
+
+    @Test
+    void anUndirectedInfinityIsNotCalledInfinity() throws Exception {
+        // 1/0 has no direction. Calling it infinity would be a tidier answer that is also wrong.
+        assertEquals("ComplexInfinity", eval("1/0"));
+        assertTrue(!eval("1/0").equals("infinity"));
+    }
+
+    @Test
     void matricesConvertAsNestedLists() throws Exception {
         assertEquals("[[1, 2], [3, 4]]", eval("[[1,2],[3,4]]"));
         // `*` is ELEMENTWISE, as in Mathematica; the matrix product is dot().

@@ -254,6 +254,19 @@ supported and which one someone wants is not something the program can know.
 at. Worth doing: rendering these caught right-aligned section headings and a list clipped mid-row
 while 340 structural tests stayed green.
 
+### Finding out what exists
+
+`C-h f` opens the function reference: every callable thing, grouped, filterable by **what it does**
+as well as by name — "differentiate" finds `deriv`, "prime" finds `PrimeQ`. Clicking a row puts the
+signature on the input line, because a reference you retype from is a reference you read once.
+
+Completion answers a different question. It needs a prefix, so it can tell you how a name is spelled
+and never that the name exists; the sheet is the same catalogue with that requirement removed.
+
+Names in Capitals are the engine's own and work because an unrecognised head is passed through
+untouched — the same totality that makes a wrong guess fail silently, which is what both surfaces
+exist to fix.
+
 ### Modes
 
 The mode line is not decoration — each entry is tested for the thing it claims to do,

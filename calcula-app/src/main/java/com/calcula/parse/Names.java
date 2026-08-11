@@ -98,7 +98,10 @@ public final class Names {
         // useful as ordinary variable names — an index `i` is more common in practice than the
         // imaginary unit. Type E, I or Pi for the constants; those are already the stored names.
         map("pi", "Pi");
-        alias("infinity", "Infinity");
+        // Registered as a MAP, not an alias, so it prints back the way it is typed — the same rule pi
+        // follows. As an alias it was accepted on input and printed as `Infinity`, which is the one
+        // spelling nobody used.
+        map("infinity", "Infinity");
         alias("inf", "Infinity");
     }
 

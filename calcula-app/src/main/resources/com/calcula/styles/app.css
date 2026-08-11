@@ -422,3 +422,24 @@
 .mode-busy {
     -fx-text-fill: -color-accent-fg;
 }
+
+/* ---- the function sheet ------------------------------------------------- */
+
+.sheet-scroll {
+    -fx-background-color: transparent;
+    -fx-border-width: 0;
+}
+
+.sheet-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+.sheet-row {
+    -fx-padding: 2 6 2 6;
+    -fx-background-radius: 4;
+}
+
+.sheet-row:hover {
+    -fx-background-color: -color-bg-subtle;
+    -fx-cursor: hand;
+}

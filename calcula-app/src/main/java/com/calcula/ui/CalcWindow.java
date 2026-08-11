@@ -157,6 +157,7 @@ public final class CalcWindow {
     private final CommandPalette palette;
     private final SettingsDialog settingsDialog;
     private final CommandMenuBar menuBar;
+    private final FunctionSheet functionSheet;
     private final InputCompletion completion = new InputCompletion(input);
 
     /**
@@ -223,6 +224,13 @@ public final class CalcWindow {
         // still-null field is an NPE during construction rather than a lazy lookup later.
         palette = new CommandPalette(registry, keymap::invert, overlays, this::runCommand);
         settingsDialog = new SettingsDialog(overlays, () -> settings, this::applySettings);
+        // Picking a row puts the signature on the input line, so a reference is something to work
+        // from rather than something to retype from.
+        functionSheet = new FunctionSheet(overlays, signature -> {
+            input.setText(signature);
+            input.requestFocus();
+            input.positionCaret(signature.length());
+        });
 
         registerCommands();
         installDefaultKeymap();
@@ -405,6 +413,8 @@ public final class CalcWindow {
         registry.register("app.settings", "Settings…", "Preferences a new session starts from", settingsDialog::show);
         registry.register("app.quit", "Quit", "Close Calcula", () -> javafx.application.Platform.exit());
         registry.register("help.about", "About Calcula", "Version and licence", this::showAbout);
+        registry.register(
+                "help.functions", "Functions…", "Everything callable, grouped and filterable", functionSheet::show);
         registry.register(
                 "select.widen",
                 "Select enclosing part",
@@ -746,6 +756,7 @@ public final class CalcWindow {
         keymap.bind("M-Down", "select.narrow");
         keymap.bind("M-Right", "select.nextSibling");
         keymap.bind("M-Left", "select.previousSibling");
+        keymap.bind("C-h f", "help.functions");
     }
 
     private void onKey(KeyEvent event) {
@@ -1425,9 +1436,22 @@ public final class CalcWindow {
         noteFromFx(message);
     }
 
+    /**
+     * What an empty trail says.
+     *
+     * <p>It said "trail", which names the region without explaining why it is there — and the trail is
+     * the part of this window that is least like a calculator and most worth understanding.
+     */
+    private static Node trailHint() {
+        VBox hint =
+                new VBox(new Label("Everything you type and every"), new Label("result, in order."), example("C-h f"));
+        hint.getStyleClass().add("stack-empty");
+        return hint;
+    }
+
     private void buildTrail() {
         trailView.getStyleClass().add("trail-view");
-        trailView.setPlaceholder(new Label("trail"));
+        trailView.setPlaceholder(trailHint());
         trailView.setCellFactory(v -> new ListCell<>() {
             @Override
             protected void updateItem(TrailEntry entry, boolean empty) {

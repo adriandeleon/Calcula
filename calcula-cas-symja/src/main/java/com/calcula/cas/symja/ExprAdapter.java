@@ -133,7 +133,8 @@ final class ExprAdapter {
             }
             IExpr head = ast.head();
             if (head.isSymbol()) {
-                return Exprs.call(symbolName((ISymbol) head), args);
+                Expr plain = plainInfinity(symbolName((ISymbol) head), args);
+                return plain != null ? plain : Exprs.call(symbolName((ISymbol) head), args);
             }
             // A head that is itself an expression: keep it as the first argument of $Apply.
             List<Expr> applied = new ArrayList<>(args.size() + 1);
@@ -145,6 +146,43 @@ final class ExprAdapter {
             return real(e);
         }
         return engineValue(e);
+    }
+
+    /**
+     * The engine's infinities, said the way a person would.
+     *
+     * <p>{@code 1/0} answers {@code DirectedInfinity()} and {@code log(0)} answers
+     * {@code DirectedInfinity(-1)} — the engine's internal encoding of an infinity plus the direction
+     * it is approached from, leaking through to the stack where nobody can read it.
+     *
+     * <p>Translated HERE rather than at display time, so the whole application sees the plain form:
+     * the formatter, the typeset layout, the TeX and MathML writers and the clipboard all inherit it
+     * without a special case each. Both forms round-trip back to the engine, {@code Infinity} and
+     * {@code ComplexInfinity} being its own names for them.
+     *
+     * <p>The unsigned case stays {@code ComplexInfinity} rather than becoming plain infinity, because
+     * they are not the same thing: {@code 1/0} has no direction, and calling it ∞ would be a tidier
+     * answer that is also wrong.
+     *
+     * @return the plain form, or null when this is not an infinity
+     */
+    private static Expr plainInfinity(String head, List<Expr> args) {
+        if (!"DirectedInfinity".equals(head)) {
+            return null;
+        }
+        if (args.isEmpty()) {
+            return Exprs.sym("ComplexInfinity");
+        }
+        if (args.size() == 1 && args.get(0) instanceof Expr.Int direction) {
+            int sign = direction.value().signum();
+            if (sign > 0) {
+                return Exprs.sym("Infinity");
+            }
+            if (sign < 0) {
+                return Exprs.call("Minus", Exprs.sym("Infinity"));
+            }
+        }
+        return null; // a direction we do not model — better verbatim than wrong
     }
 
     /**
