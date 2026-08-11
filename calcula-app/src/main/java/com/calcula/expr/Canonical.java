@@ -136,6 +136,57 @@ public final class Canonical {
                 && d.value().equals(TWO);
     }
 
+    /**
+     * True when this renders as a built-up fraction rather than as juxtaposed factors.
+     *
+     * <p>Every renderer needs this to decide bracketing, and the answer must be the SAME one it will
+     * later act on: a fraction's own bars group it, so bracketing it too is noise, while juxtaposed
+     * factors genuinely need parentheses under a tighter operator.
+     */
+    public static boolean rendersAsFraction(Expr e) {
+        if (!(e instanceof Call c)) {
+            return false;
+        }
+        return switch (c.head()) {
+            case "Divide" -> c.arity() == 2;
+            case "Times" -> c.arity() >= 2 && splitProduct(c.args()).isFraction();
+            case "Power" -> c.arity() == 2 && isMinusOne(c.arg(1));
+            default -> false;
+        };
+    }
+
+    /** True when this renders as a radical, whose own bar groups it. */
+    public static boolean rendersAsRadical(Expr e) {
+        if (!(e instanceof Call c)) {
+            return false;
+        }
+        return "Sqrt".equals(c.head()) && c.arity() == 1
+                || "Power".equals(c.head()) && c.arity() == 2 && isHalf(c.arg(1));
+    }
+
+    /**
+     * True when this needs parentheses to sit under an operator that binds more tightly.
+     *
+     * <p>Deliberately keyed on what it RENDERS as, not on its head: a {@code Power} is usually a
+     * superscript and needs bracketing, but the same head spells a reciprocal and a square root, both
+     * of which group themselves.
+     */
+    public static boolean needsParens(Expr e) {
+        if (rendersAsFraction(e) || rendersAsRadical(e)) {
+            return false;
+        }
+        if (e instanceof Call c) {
+            return switch (c.head()) {
+                case "Plus", "Subtract" -> c.arity() >= 2;
+                case "Minus" -> c.arity() == 1;
+                case "Times" -> c.arity() >= 2;
+                case "Power" -> c.arity() == 2;
+                default -> false;
+            };
+        }
+        return e instanceof Num n && isNegative(n);
+    }
+
     public static boolean isMinusOne(Expr e) {
         return e instanceof Int i && i.value().equals(MINUS_ONE);
     }

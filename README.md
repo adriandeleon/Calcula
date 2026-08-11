@@ -82,6 +82,7 @@ Foundation complete and green (154 tests). The layers, innermost first:
 | `cas` + `calcula-cas-symja` | The engine seam and its Symja implementation |
 | `ui` | Window, chord translation, the Rule & Plate themes |
 | `ui.math` | Expr → JavaFX nodes: real two-dimensional typeset mathematics |
+| `export` | TeX and MathML writers over the same tree |
 | `plot` | Expr → double closure, sampler with pole breaks, viewport, ticks |
 | `ui.plot` | The canvas, with drag and scroll |
 
@@ -137,6 +138,20 @@ the interactive half, and neither replaces the other.
 
 Still to do: shaded area labelled with the closed-form integral, and a tangent line at the
 cursor.
+
+### Copying
+
+`C-c` (`Cmd-c` on macOS) puts the top of the stack on the clipboard in **every** format at
+once — MathML, MathML wrapped in HTML, LaTeX as the plain text, and a picture. A clipboard
+is already a multi-format container and the consumer knows which form it can use, so
+nobody is asked which format they meant: Word makes a real editable equation, Overleaf
+takes the TeX, chat takes the image.
+
+Both writers emit from the tree rather than through the engine. `TeXForm` produces
+`\frac{1}{2} \cdot x \cdot \sqrt{\left( 1 - {x}^{2}\right)}` where this produces
+`\frac{x \sqrt{1 - x^{2}}}{2}`, and `MathMLForm` renders a matrix as nested sets rather
+than an `<mtable>` and prepends a DOCTYPE that has to be stripped. Writing them here also
+means copying works with no engine loaded.
 
 ### Still open
 

@@ -269,6 +269,9 @@ public final class CalcWindow {
         keymap.bind("C-x d", "stack.dup");
         keymap.bind("M-i", "input.toggleModel");
         keymap.bind("M-p", "plot.function");
+        // Both spellings: Chords emits Cmd- on macOS and C- elsewhere.
+        keymap.bind("C-c", "edit.copy");
+        keymap.bind("Cmd-c", "edit.copy");
     }
 
     private void onKey(KeyEvent event) {
