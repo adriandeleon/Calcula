@@ -1,15 +1,13 @@
 package com.calcula.parse;
 
-import java.math.BigInteger;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.calcula.expr.Canonical;
 import com.calcula.expr.Expr;
 import com.calcula.expr.Expr.Call;
 import com.calcula.expr.Expr.Flt;
 import com.calcula.expr.Expr.Int;
-import com.calcula.expr.Expr.Num;
 import com.calcula.expr.Expr.Rat;
 import com.calcula.expr.Expr.Sym;
 import com.calcula.expr.Exprs;
@@ -55,8 +53,6 @@ public final class Formatter {
     private static final int PREC_POSTFIX = 7;
     private static final int PREC_ATOM = 100;
 
-    private static final BigInteger MINUS_ONE = BigInteger.valueOf(-1);
-
     private Formatter() {}
 
     public static String format(Expr e) {
@@ -95,7 +91,7 @@ public final class Formatter {
             }
             case "Power" -> {
                 // Power(b, -1) is how the engine spells a reciprocal.
-                if (c.arity() == 2 && isMinusOne(c.arg(1))) {
+                if (c.arity() == 2 && Canonical.isMinusOne(c.arg(1))) {
                     return bracket(
                             "1/" + write(c.arg(0), PREC_MULTIPLICATIVE, true),
                             PREC_MULTIPLICATIVE,
@@ -147,7 +143,7 @@ public final class Formatter {
     private static String plus(List<Expr> args) {
         StringBuilder out = new StringBuilder(write(args.get(0), PREC_ADDITIVE, false));
         for (Expr arg : args.subList(1, args.size())) {
-            Expr negated = negatedPart(arg);
+            Expr negated = Canonical.negatedPart(arg);
             if (negated != null) {
                 out.append(" - ").append(write(negated, PREC_ADDITIVE, true));
             } else {
@@ -162,40 +158,20 @@ public final class Formatter {
      * comes back from the engine and prints as {@code x*y^(-1)}.
      */
     private static String times(List<Expr> args, int parentPrec, boolean weakSide) {
-        List<Expr> numerator = new ArrayList<>();
-        List<Expr> denominator = new ArrayList<>();
-        boolean negative = false;
-        for (Expr arg : args) {
-            if (isMinusOne(arg)) {
-                negative = !negative;
-            } else if (arg instanceof Call p && "Power".equals(p.head()) && p.arity() == 2 && isMinusOne(p.arg(1))) {
-                denominator.add(p.arg(0));
-            } else if (arg instanceof Rat r) {
-                // A rational coefficient is a division too. The engine returns pi^2/6 as
-                // Times(1/6, Power(Pi, 2)), and nobody writes that as 1/6*pi^2.
-                if (r.num().signum() < 0) {
-                    negative = !negative;
-                }
-                BigInteger magnitude = r.num().abs();
-                if (!magnitude.equals(BigInteger.ONE)) {
-                    numerator.add(Exprs.of(magnitude));
-                }
-                denominator.add(Exprs.of(r.den()));
-            } else {
-                numerator.add(arg);
-            }
-        }
+        Canonical.Product product = Canonical.splitProduct(args);
+        List<Expr> numerator = product.numerator();
         String top = numerator.isEmpty() ? "1" : join(numerator, "*", PREC_MULTIPLICATIVE);
         String text = top;
-        if (!denominator.isEmpty()) {
+        if (product.isFraction()) {
             // A multi-factor denominator must be bracketed: a/(b*c) is not a/b*c.
+            List<Expr> denominator = product.denominator();
             String bottom = denominator.size() == 1
                     ? write(denominator.get(0), PREC_MULTIPLICATIVE, true)
                     : "(" + join(denominator, "*", PREC_MULTIPLICATIVE) + ")";
             text = top + "/" + bottom;
         }
         int prec = PREC_MULTIPLICATIVE;
-        if (negative) {
+        if (product.negative()) {
             text = "-" + text;
             prec = PREC_UNARY;
         }
@@ -204,59 +180,6 @@ public final class Formatter {
 
     private static String join(List<Expr> args, String separator, int prec) {
         return args.stream().map(a -> write(a, prec, false)).collect(Collectors.joining(separator));
-    }
-
-    /**
-     * The positive part of a negated term, or null if it is not negated.
-     *
-     * <p>The coefficient is any negative literal, not just −1. The engine returns {@code -ln(u)/6} as
-     * {@code Times(-1/6, Log(u))}, and matching only {@code Times(-1, …)} leaves it to print as
-     * {@code + -ln(u)/6} — a stray sign that looks like a bug in the algebra rather than in the
-     * formatter.
-     */
-    private static Expr negatedPart(Expr e) {
-        if (e instanceof Call c
-                && "Times".equals(c.head())
-                && c.arity() >= 2
-                && c.arg(0) instanceof Num n
-                && negativeLiteral(n)) {
-            List<Expr> rest = new ArrayList<>(c.args());
-            Expr positive = negateLiteral(n);
-            if (isOne(positive)) {
-                rest.remove(0); // a bare -1 contributes nothing once the sign is extracted
-            } else {
-                rest.set(0, positive);
-            }
-            return rest.size() == 1 ? rest.get(0) : Exprs.call("Times", rest);
-        }
-        if (e instanceof Num n && negativeLiteral(n)) {
-            return negateLiteral(n);
-        }
-        return null;
-    }
-
-    private static boolean isOne(Expr e) {
-        return e instanceof Int i && i.value().equals(BigInteger.ONE);
-    }
-
-    private static boolean negativeLiteral(Num n) {
-        return switch (n) {
-            case Int i -> i.value().signum() < 0;
-            case Rat r -> r.num().signum() < 0;
-            case Flt f -> f.value().signum() < 0;
-        };
-    }
-
-    private static Expr negateLiteral(Num n) {
-        return switch (n) {
-            case Int i -> Exprs.of(i.value().negate());
-            case Rat r -> Exprs.rat(r.num().negate(), r.den());
-            case Flt f -> Exprs.of(f.value().negate());
-        };
-    }
-
-    private static boolean isMinusOne(Expr e) {
-        return e instanceof Int i && i.value().equals(MINUS_ONE);
     }
 
     /** Wrap only when precedence demands it, or when sitting on the weak side of an equal-precedence parent. */

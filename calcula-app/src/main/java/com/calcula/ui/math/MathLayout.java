@@ -1,6 +1,5 @@
 package com.calcula.ui.math;
 
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +8,7 @@ import javafx.scene.Node;
 import javafx.scene.layout.Region;
 import javafx.scene.text.Text;
 
+import com.calcula.expr.Canonical;
 import com.calcula.expr.Expr;
 import com.calcula.expr.Expr.Call;
 import com.calcula.expr.Expr.Flt;
@@ -74,8 +74,6 @@ public final class MathLayout {
 
     /** U+2212, the real minus sign — not a hyphen, which is shorter and sits at the wrong height. */
     private static final String MINUS = "−";
-
-    private static final BigInteger MINUS_ONE = BigInteger.valueOf(-1);
 
     private MathLayout() {}
 
@@ -201,7 +199,7 @@ public final class MathLayout {
         List<Item> items = new ArrayList<>();
         items.add(item(c.arg(0), style));
         for (Expr arg : c.args().subList(1, c.arity())) {
-            Expr positive = negatedPart(arg);
+            Expr positive = Canonical.negatedPart(arg);
             if (positive != null) {
                 items.add(op(MINUS, style, Atom.BIN));
                 items.add(item(positive, style));
@@ -214,33 +212,15 @@ public final class MathLayout {
     }
 
     private static Node product(Call c, MathStyle style) {
-        List<Expr> numerator = new ArrayList<>();
-        List<Expr> denominator = new ArrayList<>();
-        boolean negative = false;
-        for (Expr arg : c.args()) {
-            if (isMinusOne(arg)) {
-                negative = !negative;
-            } else if (arg instanceof Call p && "Power".equals(p.head()) && p.arity() == 2 && isMinusOne(p.arg(1))) {
-                denominator.add(p.arg(0));
-            } else if (arg instanceof Rat r) {
-                if (r.num().signum() < 0) {
-                    negative = !negative;
-                }
-                if (!r.num().abs().equals(BigInteger.ONE)) {
-                    numerator.add(Exprs.of(r.num().abs()));
-                }
-                denominator.add(Exprs.of(r.den()));
-            } else {
-                numerator.add(arg);
-            }
-        }
-        Node body = denominator.isEmpty()
-                ? juxtapose(numerator, style)
-                : new FractionNode(
-                        juxtapose(numerator.isEmpty() ? List.of(Exprs.ONE) : numerator, style.fractionPart()),
-                        juxtapose(denominator, style.fractionPart()),
-                        style);
-        return negative ? row(style, op(MINUS, style, Atom.BIN), new Item(body, Atom.ORD)) : body;
+        Canonical.Product product = Canonical.splitProduct(c.args());
+        List<Expr> numerator = product.numerator().isEmpty() ? List.of(Exprs.ONE) : product.numerator();
+        Node body = product.isFraction()
+                ? new FractionNode(
+                        juxtapose(numerator, style.fractionPart()),
+                        juxtapose(product.denominator(), style.fractionPart()),
+                        style)
+                : juxtapose(numerator, style);
+        return product.negative() ? row(style, op(MINUS, style, Atom.BIN), new Item(body, Atom.ORD)) : body;
     }
 
     /**
@@ -268,10 +248,10 @@ public final class MathLayout {
             return function(c, style);
         }
         Expr exponent = c.arg(1);
-        if (isMinusOne(exponent)) {
+        if (Canonical.isMinusOne(exponent)) {
             return fraction(Exprs.ONE, c.arg(0), style);
         }
-        if (isHalf(exponent)) {
+        if (Canonical.isHalf(exponent)) {
             // A half power IS a square root, and reads far better drawn as one.
             return new RadicalNode(layout(c.arg(0), style), style);
         }
@@ -376,65 +356,4 @@ public final class MathLayout {
 
     // ------------------------------------------------------------------ canonical forms
 
-    private static Expr negatedPart(Expr e) {
-        if (e instanceof Call c
-                && "Times".equals(c.head())
-                && c.arity() >= 2
-                && c.arg(0) instanceof Num n
-                && negative(n)) {
-            List<Expr> rest = new ArrayList<>(c.args());
-            Expr positive = negate(n);
-            if (positive instanceof Int i && i.value().equals(BigInteger.ONE)) {
-                rest.remove(0);
-            } else {
-                rest.set(0, positive);
-            }
-            return rest.size() == 1 ? rest.get(0) : Exprs.call("Times", rest);
-        }
-        if (e instanceof Num n && negative(n)) {
-            return negate(n);
-        }
-        return null;
-    }
-
-    private static boolean negative(Num n) {
-        return switch (n) {
-            case Int i -> i.value().signum() < 0;
-            case Rat r -> r.num().signum() < 0;
-            case Flt f -> f.value().signum() < 0;
-        };
-    }
-
-    private static Expr negate(Num n) {
-        return switch (n) {
-            case Int i -> Exprs.of(i.value().negate());
-            case Rat r -> Exprs.rat(r.num().negate(), r.den());
-            case Flt f -> Exprs.of(f.value().negate());
-        };
-    }
-
-    /**
-     * One half, however it was spelled.
-     *
-     * <p>Both forms genuinely occur: the ENGINE returns an exact {@code Rat(1,2)}, while the PARSER
-     * gives {@code Divide(1, 2)} for a typed {@code x^(1/2)} — nothing has evaluated it yet. Matching
-     * only the first draws a radical for engine output and a raised fraction for the identical thing
-     * typed by hand.
-     */
-    private static boolean isHalf(Expr e) {
-        if (e instanceof Rat r) {
-            return r.num().equals(BigInteger.ONE) && r.den().equals(BigInteger.TWO);
-        }
-        return e instanceof Call c
-                && "Divide".equals(c.head())
-                && c.arity() == 2
-                && c.arg(0) instanceof Int n
-                && n.value().equals(BigInteger.ONE)
-                && c.arg(1) instanceof Int d
-                && d.value().equals(BigInteger.TWO);
-    }
-
-    private static boolean isMinusOne(Expr e) {
-        return e instanceof Int i && i.value().equals(MINUS_ONE);
-    }
 }
