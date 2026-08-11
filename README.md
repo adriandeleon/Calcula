@@ -119,10 +119,24 @@ impossible. Poles break the polyline instead of being drawn through — `tan(x)`
 separate branches. `mvn test -Dtest=PlotSampleFxTest` writes
 `calcula-app/target/plot-sample.png`.
 
-Still to do here: rendering Symja's own `Graphics` output (it already returns adaptively
-sampled `Line` primitives), and the symbolically-informed extras — exact asymptotes from
-`Solve(denominator = 0)`, exact critical points, shaded area labelled with the closed-form
-integral.
+Two things follow from having a CAS in the same process, and neither is available to a
+purely numerical grapher:
+
+- **Poles come from the algebra**, not a heuristic. `Solve(Denominator(Together(f)) = 0)`
+  says where they are, the line breaks exactly there, and they are drawn as dashed rules.
+  The jump threshold remains as a fallback for what the algebra cannot see.
+- **Turning points are labelled exactly.** `Solve(D(f,x) = 0)` gives the root as an
+  expression, so `sin(x)` is marked **(pi/2, 1)** rather than (1.5708, 1.0).
+
+Both are best-effort: an annotation makes a plot better and is never a reason to fail one.
+
+The engine's own pictures render too — `Plot(sin(x), [x, 0, 6])` returns a `Graphics` value
+with adaptively-sampled `Line` primitives, which lands on the stack like any other result
+and is drawn rather than typeset. That is the static-and-exact half; compiled curves are
+the interactive half, and neither replaces the other.
+
+Still to do: shaded area labelled with the closed-form integral, and a tangent line at the
+cursor.
 
 ### Still open
 

@@ -27,7 +27,7 @@ class FormatterTest {
         assertEquals("(1 + 2)*3", f("(1 + 2) * 3"));
         // The one that matters: a - (b - c) is not a - b - c.
         assertEquals("1 - (2 - 3)", f("1 - (2 - 3)"));
-        assertEquals("8 / (4 / 2)", f("8 / (4 / 2)"));
+        assertEquals("8/(4/2)", f("8 / (4 / 2)"));
     }
 
     @Test

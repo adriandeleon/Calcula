@@ -42,6 +42,8 @@ import com.calcula.machine.Op;
 import com.calcula.machine.TrailEntry;
 import com.calcula.parse.Formatter;
 import com.calcula.plot.ExprCompiler;
+import com.calcula.plot.GraphicsScene;
+import com.calcula.plot.PlotAnalysis;
 import com.calcula.plot.PlotException;
 import com.calcula.plot.PlotValue;
 import com.calcula.ui.math.MathLayout;
@@ -108,6 +110,15 @@ public final class CalcWindow {
         t.setDaemon(true);
         return t;
     });
+
+    /**
+     * Analyses, keyed by the plot they belong to.
+     *
+     * <p>Computed once when the plot is made, on the worker thread where the engine lives, and read
+     * later on the FX thread when the cell is built. Keyed by value, so undo and redo find the same
+     * analysis rather than recomputing it.
+     */
+    private final java.util.Map<Expr, PlotAnalysis> plotAnalyses = new java.util.concurrent.ConcurrentHashMap<>();
 
     private volatile CasEngine engine = CasEngineLoader.unavailable("still loading");
     private volatile Reader reader = new AlgebraicReader();
@@ -233,7 +244,10 @@ public final class CalcWindow {
                     }
                     // The formula is NOT consumed: Calc graphs without taking the value away, and having the
                     // expression still there is the point of plotting it.
-                    m.apply(new Op.Push(PlotValue.of(top, PlotValue.inferVariable(top), -10, 10)));
+                    Expr plot = PlotValue.of(top, PlotValue.inferVariable(top), -10, 10);
+                    // On the worker thread, where the engine is reachable and a slow Solve cannot stall the UI.
+                    plotAnalyses.put(plot, analyse(plot));
+                    m.apply(new Op.Push(plot));
                 }));
         registry.register("input.toggleModel", "Toggle entry model", "Switch between algebraic and RPN entry", () -> {
             reader = reader instanceof AlgebraicReader ? new RpnReader() : new AlgebraicReader();
@@ -292,10 +306,51 @@ public final class CalcWindow {
                     ExprCompiler.compile(PlotValue.body(plot), PlotValue.variable(plot)),
                     PlotValue.xMin(plot),
                     PlotValue.xMax(plot));
+            canvas.setAnalysis(plotAnalyses.getOrDefault(plot, PlotAnalysis.NONE));
         } catch (PlotException e) {
             canvas.showMessage(e.getMessage());
         }
         return canvas;
+    }
+
+    /**
+     * A picture the engine produced, e.g. from typing {@code Plot(sin(x), [x, 0, 6])}.
+     *
+     * <p>No new encoding: the engine already returns a {@code Graphics} value, so it lands on the stack
+     * like any other result and is simply drawn rather than typeset.
+     */
+    private Region sceneFor(Expr graphics) {
+        PlotCanvas canvas = new PlotCanvas(STACK_PLOT_WIDTH, STACK_PLOT_HEIGHT);
+        try {
+            canvas.showScene(GraphicsScene.parse(graphics));
+        } catch (PlotException e) {
+            canvas.showMessage(e.getMessage());
+        }
+        return canvas;
+    }
+
+    /**
+     * Ask the algebra where the poles and turning points are.
+     *
+     * <p>Best effort throughout: annotations make a plot better and are never a reason to fail one, so
+     * every failure here returns nothing to draw rather than propagating.
+     */
+    private PlotAnalysis analyse(Expr plot) {
+        CasEngine cas = engine;
+        if (!cas.available()) {
+            return PlotAnalysis.NONE;
+        }
+        Expr body = PlotValue.body(plot);
+        String variable = PlotValue.variable(plot);
+        try {
+            List<Expr> poles = PlotAnalysis.roots(cas.eval(PlotAnalysis.asymptoteQuery(body, variable)));
+            List<Expr> turning = PlotAnalysis.roots(cas.eval(PlotAnalysis.criticalQuery(body, variable)));
+            return PlotAnalysis.of(
+                    poles, turning, ExprCompiler.compile(body, variable), PlotValue.xMin(plot), PlotValue.xMax(plot));
+        } catch (CasException | RuntimeException e) {
+            // RuntimeException already covers PlotException, which extends it.
+            return PlotAnalysis.NONE;
+        }
     }
 
     // ---------------------------------------------------------------- machine access
@@ -445,7 +500,9 @@ public final class CalcWindow {
 
                 Region content = PlotValue.isPlot(value)
                         ? plotFor(value)
-                        : MathLayout.render(value, MathStyle.of(STACK_MATH_SIZE));
+                        : GraphicsScene.isGraphics(value)
+                                ? sceneFor(value)
+                                : MathLayout.render(value, MathStyle.of(STACK_MATH_SIZE));
                 content.getStyleClass().add("stack-value");
 
                 // Two boxes, because the rail and the formula want opposite alignments and one box

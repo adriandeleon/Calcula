@@ -15,6 +15,8 @@ import javafx.scene.layout.Region;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 
+import com.calcula.plot.GraphicsScene;
+import com.calcula.plot.PlotAnalysis;
 import com.calcula.plot.PlotException;
 import com.calcula.plot.Sampler;
 import com.calcula.plot.Ticks;
@@ -57,6 +59,8 @@ public final class PlotCanvas extends Region {
 
     private final Canvas canvas = new Canvas();
     private DoubleUnaryOperator function;
+    private GraphicsScene scene;
+    private PlotAnalysis analysis = PlotAnalysis.NONE;
     private Viewport viewport;
     private String message;
 
@@ -84,11 +88,36 @@ public final class PlotCanvas extends Region {
     /** Show {@code f} over the given range, choosing a y range that shows the shape. */
     public void show(DoubleUnaryOperator f, double xMin, double xMax) {
         this.function = f;
+        this.scene = null;
         this.message = null;
         double w = Math.max(1, getPrefWidth());
         double h = Math.max(1, getPrefHeight());
         double[] range = Sampler.interestingRange(f, xMin, xMax, 400);
         viewport = new Viewport(xMin, xMax, range[0], range[1], w, h);
+        draw();
+    }
+
+    /**
+     * Show a picture the engine produced, rather than a function we sample ourselves.
+     *
+     * <p>The points are fixed — the engine already chose them, adaptively — so panning and zooming
+     * transform them instead of resampling. That is the honest difference between this and
+     * {@link #show}: exact and static against approximate and live.
+     */
+    public void showScene(GraphicsScene incoming) {
+        this.scene = incoming;
+        this.function = null;
+        this.message = null;
+        double w = Math.max(1, getPrefWidth());
+        double h = Math.max(1, getPrefHeight());
+        viewport = new Viewport(
+                incoming.xRange()[0], incoming.xRange()[1], incoming.yRange()[0], incoming.yRange()[1], w, h);
+        draw();
+    }
+
+    /** Poles and turning points the algebra found. */
+    public void setAnalysis(PlotAnalysis found) {
+        this.analysis = found == null ? PlotAnalysis.NONE : found;
         draw();
     }
 
@@ -154,7 +183,94 @@ public final class PlotCanvas extends Region {
         }
         drawGrid(g);
         drawAxes(g);
+        drawScene(g);
         drawCurve(g);
+        drawAnalysis(g);
+    }
+
+    /** Primitives the engine handed back. */
+    private void drawScene(GraphicsContext g) {
+        if (scene == null) {
+            return;
+        }
+        g.setLineWidth(1.8);
+        for (GraphicsScene.Primitive primitive : scene.primitives()) {
+            g.setStroke(paint(primitive.color()));
+            g.setFill(paint(primitive.color()));
+            switch (primitive) {
+                case GraphicsScene.Primitive.Polyline line -> strokeWorldPolyline(g, line.xs(), line.ys());
+                case GraphicsScene.Primitive.Points points -> {
+                    for (int i = 0; i < points.xs().length; i++) {
+                        double sx = viewport.toScreenX(points.xs()[i]);
+                        double sy = viewport.toScreenY(points.ys()[i]);
+                        g.fillOval(sx - 2.5, sy - 2.5, 5, 5);
+                    }
+                }
+                case GraphicsScene.Primitive.Circle circle -> {
+                    double rx = circle.radius() / viewport.xSpan() * viewport.width();
+                    double ry = circle.radius() / viewport.ySpan() * viewport.height();
+                    double sx = viewport.toScreenX(circle.x());
+                    double sy = viewport.toScreenY(circle.y());
+                    g.strokeOval(sx - rx, sy - ry, 2 * rx, 2 * ry);
+                }
+            }
+        }
+    }
+
+    private void strokeWorldPolyline(GraphicsContext g, double[] xs, double[] ys) {
+        double[] sx = new double[xs.length];
+        double[] sy = new double[ys.length];
+        for (int i = 0; i < xs.length; i++) {
+            sx[i] = viewport.toScreenX(xs[i]);
+            sy[i] = viewport.toScreenY(ys[i]);
+        }
+        g.strokePolyline(sx, sy, xs.length);
+    }
+
+    private static javafx.scene.paint.Color paint(GraphicsScene.Rgb rgb) {
+        return Color.color(clamp01(rgb.red()), clamp01(rgb.green()), clamp01(rgb.blue()));
+    }
+
+    private static double clamp01(double v) {
+        return Math.max(0, Math.min(1, v));
+    }
+
+    /**
+     * The features the algebra found: poles as dashed rules, turning points as dots with their EXACT
+     * coordinates.
+     *
+     * <p>This is the part sampling cannot produce. A numerical grapher can show you roughly where the
+     * curve turns; it cannot tell you the turn is at pi/2.
+     */
+    private void drawAnalysis(GraphicsContext g) {
+        if (analysis.isEmpty()) {
+            return;
+        }
+        g.setFont(Font.font(AXIS_LABEL_SIZE));
+
+        g.setStroke(axisColor.get());
+        g.setLineWidth(1);
+        g.setLineDashes(4, 4);
+        for (PlotAnalysis.Feature pole : analysis.asymptotes()) {
+            double sx = viewport.toScreenX(pole.x());
+            if (sx >= 0 && sx <= canvas.getWidth()) {
+                g.strokeLine(sx, 0, sx, canvas.getHeight());
+            }
+        }
+        g.setLineDashes(null);
+
+        g.setFill(curveColor.get());
+        for (PlotAnalysis.Feature point : analysis.criticalPoints()) {
+            double sx = viewport.toScreenX(point.x());
+            double sy = viewport.toScreenY(point.y());
+            if (sx < 0 || sx > canvas.getWidth() || sy < 0 || sy > canvas.getHeight()) {
+                continue;
+            }
+            g.fillOval(sx - 3.5, sy - 3.5, 7, 7);
+            g.setFill(labelColor.get());
+            g.fillText(point.label(), sx + 6, sy - 6);
+            g.setFill(curveColor.get());
+        }
     }
 
     private void drawGrid(GraphicsContext g) {
@@ -206,7 +322,8 @@ public final class PlotCanvas extends Region {
         }
         List<Sampler.Segment> segments;
         try {
-            segments = Sampler.sample(function, viewport);
+            // Break where the algebra says the poles ARE, not only where the heuristic trips.
+            segments = Sampler.sample(function, viewport, analysis.breakPoints());
         } catch (PlotException e) {
             showMessage(e.getMessage());
             return;

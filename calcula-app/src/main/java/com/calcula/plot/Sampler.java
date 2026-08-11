@@ -40,6 +40,17 @@ public final class Sampler {
 
     /** Sample across the viewport's x range, in world coordinates. */
     public static List<Segment> sample(DoubleUnaryOperator f, Viewport view) {
+        return sample(f, view, new double[0]);
+    }
+
+    /**
+     * Sample, breaking the line at {@code knownBreaks} as well as wherever the jump heuristic trips.
+     *
+     * <p>The heuristic is a guess about what counts as too big a jump; a pole found by
+     * {@code Solve(denominator = 0)} is the answer. Given both, the line breaks in exactly the right
+     * place and a curve that merely rises steeply is left joined.
+     */
+    public static List<Segment> sample(DoubleUnaryOperator f, Viewport view, double[] knownBreaks) {
         int count = Math.max(2, (int) (view.width() * SAMPLES_PER_PIXEL));
         double step = view.xSpan() / (count - 1);
         double breakThreshold = view.ySpan() * BREAK_FACTOR;
@@ -54,14 +65,17 @@ public final class Sampler {
         int n = 0;
         double previous = Double.NaN;
 
+        double lastX = Double.NaN;
         for (int i = 0; i < count; i++) {
             double x = view.xMin() + i * step;
             double y = valueAt(f, x);
 
             boolean usable = Double.isFinite(y);
             boolean jumped = usable && n > 0 && Math.abs(y - previous) > breakThreshold;
+            boolean crossedPole = n > 0 && crosses(knownBreaks, lastX, x);
+            lastX = x;
 
-            if (!usable || jumped) {
+            if (!usable || jumped || crossedPole) {
                 n = flush(segments, xs, ys, n);
                 previous = Double.NaN;
                 if (!usable) {
@@ -75,6 +89,16 @@ public final class Sampler {
         }
         flush(segments, xs, ys, n);
         return segments;
+    }
+
+    /** Whether a known break lies in the half-open step just taken. */
+    private static boolean crosses(double[] breaks, double from, double to) {
+        for (double b : breaks) {
+            if (b > from && b <= to) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static double valueAt(DoubleUnaryOperator f, double x) {

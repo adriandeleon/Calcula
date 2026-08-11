@@ -130,8 +130,10 @@ public final class Formatter {
             boolean rightAssociative = "Power".equals(c.head()) || "Rule".equals(c.head());
             String left = write(c.arg(0), prec, rightAssociative);
             String right = write(c.arg(1), prec, !rightAssociative);
-            // Power reads better tight; everything else gets breathing room.
-            String text = "Power".equals(c.head()) ? left + infix + right : left + " " + infix + " " + right;
+            // Tight for the multiplicative operators and the power, spaced for sums and relations:
+            // the spacing mirrors precedence. It also has to MATCH what the n-ary Times path emits,
+            // or `a/b` and a parsed `a / b` — the same quotient — print two different ways.
+            String text = tight(c.head()) ? left + infix + right : left + " " + infix + " " + right;
             return bracket(text, prec, parentPrec, weakSide);
         }
         if (Exprs.LIST.equals(c.head())) {
@@ -261,6 +263,14 @@ public final class Formatter {
     private static String bracket(String text, int prec, int parentPrec, boolean weakSide) {
         boolean needed = prec < parentPrec || (prec == parentPrec && weakSide);
         return needed ? "(" + text + ")" : text;
+    }
+
+    /** Operators set without surrounding space. */
+    private static boolean tight(String head) {
+        return switch (head) {
+            case "Times", "Divide", "Power" -> true;
+            default -> false;
+        };
     }
 
     private static String infixOperator(String head) {
