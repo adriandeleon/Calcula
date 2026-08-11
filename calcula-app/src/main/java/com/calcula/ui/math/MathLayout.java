@@ -16,6 +16,7 @@ import com.calcula.expr.Expr.Int;
 import com.calcula.expr.Expr.Num;
 import com.calcula.expr.Expr.Rat;
 import com.calcula.expr.Expr.Sym;
+import com.calcula.expr.ExprPath;
 import com.calcula.expr.Exprs;
 import com.calcula.parse.Names;
 
@@ -84,12 +85,13 @@ public final class MathLayout {
      * one shape to lay out regardless of whether the formula happened to be a single letter.
      */
     public static Region render(Expr e, MathStyle style) {
-        Node node = layout(e, style);
+        Node node = layout(e, style, ExprPath.ROOT);
         if (node instanceof Region region) {
             return region;
         }
         Region wrapper = (Region) row(style, new Item(node, Atom.ORD));
         wrapper.setUserData(e);
+        wrapper.getProperties().put(PATH_KEY, ExprPath.ROOT);
         return wrapper;
     }
 
@@ -108,50 +110,114 @@ public final class MathLayout {
         return null;
     }
 
+    /** A subterm together with its address inside the formula it came from. */
+    public record Selection(Expr expr, List<Integer> path) {}
+
+    /**
+     * The nearest node that is both a subterm AND addressable, walking up from {@code node}.
+     *
+     * <p>The two conditions are one lookup on purpose. A rendered formula does not mirror its tree:
+     * canonical forms are reassembled for display, so a fraction can be synthesised from {@code Times},
+     * a radical from {@code Power(x, 1/2)}, and a minus sign lifted out of a coefficient. Those nodes
+     * show a subterm that is not <em>at</em> any address — {@code x*cos(x)} drawn after a minus is not
+     * what {@code arg(0)} holds, which is {@code Times(-1, x, cos(x))}.
+     *
+     * <p>So a synthesised node carries no address, and this walks past it to the nearest ancestor that
+     * has one. Returning the expr and the path from the SAME node makes them agree by construction —
+     * the alternative, resolving each separately and checking afterwards, is a rewrite that silently
+     * replaces the wrong thing whenever the check is forgotten.
+     */
+    public static Selection selectionAt(Node node) {
+        for (Node n = node; n != null; n = n.getParent()) {
+            if (n.getUserData() instanceof Expr e && n.getProperties().get(PATH_KEY) instanceof List<?> path) {
+                @SuppressWarnings("unchecked")
+                List<Integer> address = (List<Integer>) path;
+                return new Selection(e, address);
+            }
+        }
+        return null;
+    }
+
+    /** Property key for a node's address. Identity-keyed, so nothing else can collide with it. */
+    private static final Object PATH_KEY = new Object();
+
     // ------------------------------------------------------------------ dispatch
 
+    /** Lay out a subterm whose address is not expressible — see {@link #selectionAt}. */
     private static Node layout(Expr e, MathStyle style) {
+        return layout(e, style, null);
+    }
+
+    private static Node layout(Expr e, MathStyle style, List<Integer> path) {
         Node node =
                 switch (e) {
                     case Int n -> number(n.value().toString(), style);
                     case Flt f -> number(f.value().toPlainString(), style);
                     case Rat r -> rational(r, style);
                     case Sym s -> symbol(s, style);
-                    case Call c -> call(c, style);
+                    case Call c -> call(c, style, path);
                 };
-        return tag(node, e);
+        return tag(node, e, path);
     }
 
-    private static Node tag(Node node, Expr e) {
+    private static Node tag(Node node, Expr e, List<Integer> path) {
         node.setUserData(e);
+        if (path != null) {
+            node.getProperties().put(PATH_KEY, path);
+        }
         return node;
     }
 
-    private static Node call(Call c, MathStyle style) {
+    private static Node call(Call c, MathStyle style, List<Integer> path) {
         return switch (c.head()) {
-            case "Plus" -> c.arity() >= 2 ? sum(c, style) : function(c, style);
-            case "Times" -> c.arity() >= 2 ? product(c, style) : function(c, style);
-            case "Divide" -> c.arity() == 2 ? fraction(c.arg(0), c.arg(1), style) : function(c, style);
+            case "Plus" -> c.arity() >= 2 ? sum(c, style, path) : function(c, style, path);
+            // Times is reassembled into a fraction or juxtaposed factors, so its parts are not at any
+            // address — see selectionAt. A click inside one selects the whole product.
+            case "Times" -> c.arity() >= 2 ? product(c, style) : function(c, style, path);
+            case "Divide" ->
+                c.arity() == 2
+                        ? fraction(c.arg(0), c.arg(1), style, at(path, 0), at(path, 1))
+                        : function(c, style, path);
             case "Subtract" ->
                 c.arity() == 2
-                        ? row(style, item(c.arg(0), style), op(MINUS, style, Atom.BIN), item(c.arg(1), style))
-                        : function(c, style);
+                        ? row(
+                                style,
+                                item(c.arg(0), style, at(path, 0)),
+                                op(MINUS, style, Atom.BIN),
+                                item(c.arg(1), style, at(path, 1)))
+                        : function(c, style, path);
             case "Minus" ->
-                c.arity() == 1 ? row(style, op(MINUS, style, Atom.BIN), item(c.arg(0), style)) : function(c, style);
-            case "Power" -> power(c, style);
-            case "Sqrt" -> c.arity() == 1 ? new RadicalNode(layout(c.arg(0), style), style) : function(c, style);
+                c.arity() == 1
+                        ? row(style, op(MINUS, style, Atom.BIN), item(c.arg(0), style, at(path, 0)))
+                        : function(c, style, path);
+            case "Power" -> power(c, style, path);
+            case "Sqrt" ->
+                c.arity() == 1
+                        ? new RadicalNode(layout(c.arg(0), style, at(path, 0)), style)
+                        : function(c, style, path);
             case "Factorial" ->
-                c.arity() == 1 ? row(style, item(c.arg(0), style), op("!", style, Atom.ORD)) : function(c, style);
-            case "List" -> list(c, style);
+                c.arity() == 1
+                        ? row(style, item(c.arg(0), style, at(path, 0)), op("!", style, Atom.ORD))
+                        : function(c, style, path);
+            case "List" -> list(c, style, path);
             case "$Engine" ->
-                c.arity() == 1 && c.arg(0) instanceof Sym s ? number(s.name(), style) : function(c, style);
+                c.arity() == 1 && c.arg(0) instanceof Sym s ? number(s.name(), style) : function(c, style, path);
             default -> {
                 String relation = RELATIONS.get(c.head());
                 yield relation != null && c.arity() == 2
-                        ? row(style, item(c.arg(0), style), op(relation, style, Atom.REL), item(c.arg(1), style))
-                        : function(c, style);
+                        ? row(
+                                style,
+                                item(c.arg(0), style, at(path, 0)),
+                                op(relation, style, Atom.REL),
+                                item(c.arg(1), style, at(path, 1)))
+                        : function(c, style, path);
             }
         };
+    }
+
+    /** The address of the {@code index}-th argument, or null when the parent has none either. */
+    private static List<Integer> at(List<Integer> path, int index) {
+        return path == null ? null : ExprPath.child(path, index);
     }
 
     // ------------------------------------------------------------------ leaves
@@ -195,17 +261,21 @@ public final class MathLayout {
 
     // ------------------------------------------------------------------ composites
 
-    private static Node sum(Call c, MathStyle style) {
+    private static Node sum(Call c, MathStyle style, List<Integer> path) {
         List<Item> items = new ArrayList<>();
-        items.add(item(c.arg(0), style));
-        for (Expr arg : c.args().subList(1, c.arity())) {
+        items.add(item(c.arg(0), style, at(path, 0)));
+        for (int i = 1; i < c.arity(); i++) {
+            Expr arg = c.arg(i);
             Expr positive = Canonical.negatedPart(arg);
             if (positive != null) {
+                // What is drawn is the POSITIVE part, after a minus sign that was lifted out of the
+                // coefficient — so the node shows something the argument does not hold, and carries no
+                // address. Selecting inside it resolves to the sum, which is honest.
                 items.add(op(MINUS, style, Atom.BIN));
-                items.add(item(positive, style));
+                items.add(item(positive, style, null));
             } else {
                 items.add(op("+", style, Atom.BIN));
-                items.add(item(arg, style));
+                items.add(item(arg, style, at(path, i)));
             }
         }
         return row(style, items);
@@ -238,39 +308,46 @@ public final class MathLayout {
             if (i > 0 && factors.get(i) instanceof Num) {
                 items.add(op("·", style, Atom.BIN));
             }
-            items.add(item(factors.get(i), style));
+            // Factors come from a reassembled product, so none of them is at an address.
+            items.add(item(factors.get(i), style, null));
         }
         return row(style, items);
     }
 
-    private static Node power(Call c, MathStyle style) {
+    private static Node power(Call c, MathStyle style, List<Integer> path) {
         if (c.arity() != 2) {
-            return function(c, style);
+            return function(c, style, path);
         }
         Expr exponent = c.arg(1);
         if (Canonical.isMinusOne(exponent)) {
-            return fraction(Exprs.ONE, c.arg(0), style);
+            // Drawn as 1/base. The numerator is invented; the denominator really is argument 0.
+            return fraction(Exprs.ONE, c.arg(0), style, null, at(path, 0));
         }
         if (Canonical.isHalf(exponent)) {
             // A half power IS a square root, and reads far better drawn as one.
-            return new RadicalNode(layout(c.arg(0), style), style);
+            return new RadicalNode(layout(c.arg(0), style, at(path, 0)), style);
         }
-        Node base = needsFence(c.arg(0)) ? fenced(c.arg(0), style, FenceNode.Kind.PAREN) : layout(c.arg(0), style);
-        return new ScriptNode(base, layout(exponent, style.script()), style);
+        Node base = needsFence(c.arg(0))
+                ? fenced(c.arg(0), style, FenceNode.Kind.PAREN, at(path, 0))
+                : layout(c.arg(0), style, at(path, 0));
+        return new ScriptNode(base, layout(exponent, style.script(), at(path, 1)), style);
     }
 
-    private static Node fraction(Expr numerator, Expr denominator, MathStyle style) {
+    private static Node fraction(
+            Expr numerator, Expr denominator, MathStyle style, List<Integer> top, List<Integer> bottom) {
         return new FractionNode(
-                layout(numerator, style.fractionPart()), layout(denominator, style.fractionPart()), style);
+                layout(numerator, style.fractionPart(), top), layout(denominator, style.fractionPart(), bottom), style);
     }
 
-    private static Node list(Call c, MathStyle style) {
+    private static Node list(Call c, MathStyle style, List<Integer> path) {
         if (Exprs.isMatrix(c)) {
             List<List<Node>> rows = new ArrayList<>();
-            for (Expr rowExpr : c.args()) {
+            for (int r = 0; r < c.arity(); r++) {
                 List<Node> cells = new ArrayList<>();
-                for (Expr cell : Exprs.items(rowExpr)) {
-                    cells.add(layout(cell, style));
+                List<Expr> cellExprs = Exprs.items(c.arg(r));
+                for (int col = 0; col < cellExprs.size(); col++) {
+                    // A matrix is a list of lists, so a cell is two levels down.
+                    cells.add(layout(cellExprs.get(col), style, at(at(path, r), col)));
                 }
                 rows.add(cells);
             }
@@ -281,13 +358,13 @@ public final class MathLayout {
             if (i > 0) {
                 items.add(op(",", style, Atom.PUNCT));
             }
-            items.add(item(c.arg(i), style));
+            items.add(item(c.arg(i), style, at(path, i)));
         }
         return new FenceNode(row(style, items), style, FenceNode.Kind.BRACKET);
     }
 
     /** A named function: an upright name and its parenthesised arguments. */
-    private static Node function(Call c, MathStyle style) {
+    private static Node function(Call c, MathStyle style, List<Integer> path) {
         Text name = new Text(Names.toDisplay(c.head()));
         name.setFont(style.upright());
         name.getStyleClass().add("math-text");
@@ -297,14 +374,14 @@ public final class MathLayout {
             if (i > 0) {
                 args.add(op(",", style, Atom.PUNCT));
             }
-            args.add(item(c.arg(i), style));
+            args.add(item(c.arg(i), style, at(path, i)));
         }
         Node parenthesised = new FenceNode(row(style, args), style, FenceNode.Kind.PAREN);
         return row(style, new Item(name, Atom.OP), new Item(parenthesised, Atom.ORD));
     }
 
-    private static Node fenced(Expr e, MathStyle style, FenceNode.Kind kind) {
-        return new FenceNode(layout(e, style), style, kind);
+    private static Node fenced(Expr e, MathStyle style, FenceNode.Kind kind, List<Integer> path) {
+        return new FenceNode(layout(e, style, path), style, kind);
     }
 
     /** A base that is itself compound needs bracketing before a superscript can go on it. */
@@ -321,9 +398,8 @@ public final class MathLayout {
 
     private record Item(Node node, Atom atom) {}
 
-    private static Item item(Expr e, MathStyle style) {
-        Node node = layout(e, style);
-        return new Item(node, atomOf(e));
+    private static Item item(Expr e, MathStyle style, List<Integer> path) {
+        return new Item(layout(e, style, path), atomOf(e));
     }
 
     private static Atom atomOf(Expr e) {

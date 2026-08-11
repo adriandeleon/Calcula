@@ -80,6 +80,26 @@ public sealed interface Op {
     record Evaluate() implements Op {}
 
     /**
+     * Replace the value at Calc position {@code position} (1 is the top).
+     *
+     * <p>The stack is a document, not a log, so editing an entry in place is an ordinary thing to
+     * want — and it is what lets a transformation of one PART of an answer land back in the answer it
+     * came from rather than piling a near-copy on top.
+     *
+     * <p>The value is stored <b>verbatim</b>, unlike {@link Push}, which evaluates. The caller has
+     * already decided what this should be; re-evaluating could undo the very transform that was asked
+     * for — factoring something the evaluator would immediately expand again.
+     */
+    record ReplaceAt(int position, Expr value) implements Op {
+        public ReplaceAt {
+            requirePositive(position, "stack position");
+            if (value == null) {
+                throw new IllegalArgumentException("null replacement");
+            }
+        }
+    }
+
+    /**
      * Replace the mode line.
      *
      * <p>An operation rather than a setter, so that a mode change is undoable like everything else.

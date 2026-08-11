@@ -173,6 +173,12 @@ public final class Machine {
                 // expression in terms of something you have not defined yet.
                 yield from.withStack(append(from, value == null ? Exprs.sym(r.name()) : value));
             }
+            case Op.ReplaceAt r -> {
+                require(from, r.position());
+                List<Expr> next = from.mutableStack();
+                next.set(next.size() - r.position(), r.value());
+                yield from.withStack(next);
+            }
             case Op.SetModes m -> {
                 // Same modes is not an operation: it would push an undo entry that changes nothing,
                 // and someone pressing "degrees" twice would then need two undos to get back.

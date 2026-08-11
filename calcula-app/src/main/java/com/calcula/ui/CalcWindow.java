@@ -1,6 +1,7 @@
 package com.calcula.ui;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -14,6 +15,7 @@ import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.Menu;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SplitPane;
@@ -40,6 +42,7 @@ import com.calcula.config.Settings;
 import com.calcula.config.SettingsStore;
 import com.calcula.export.TexWriter;
 import com.calcula.expr.Expr;
+import com.calcula.expr.ExprPath;
 import com.calcula.expr.Exprs;
 import com.calcula.input.AlgebraicReader;
 import com.calcula.input.Reader;
@@ -423,6 +426,16 @@ public final class CalcWindow {
         return stackMenu(value, position, null);
     }
 
+    /** The transformations offered on a selected part, and the head each one applies. */
+    private static final Map<String, String> PART_TRANSFORMS = new java.util.LinkedHashMap<>(Map.of());
+
+    static {
+        PART_TRANSFORMS.put("Simplify", "Simplify");
+        PART_TRANSFORMS.put("Expand", "Expand");
+        PART_TRANSFORMS.put("Factor", "Factor");
+        PART_TRANSFORMS.put("Evaluate numerically", "N");
+    }
+
     /**
      * The right-click menu for one stack entry, and for the part of it under the cursor.
      *
@@ -435,20 +448,26 @@ public final class CalcWindow {
      * a different problem — two equal parts are different places — which is what {@code ExprPath} is
      * for, and is the next thing to build on this.
      */
-    ContextMenu stackMenu(Expr value, int position, Expr clicked) {
+    ContextMenu stackMenu(Expr value, int position, MathLayout.Selection clicked) {
         ContextMenu menu = new ContextMenu();
-        if (clicked != null && !clicked.equals(value)) {
-            String label = Formatter.format(clicked);
+        if (clicked != null && !clicked.expr().equals(value)) {
+            Expr part = clicked.expr();
+            String label = Formatter.format(part);
             String shown = label.length() > 28 ? label.substring(0, 27) + "…" : label;
             menu.getItems()
                     .addAll(
-                            menuItem("Extract  " + shown, () -> machineOp(new Op.Push(clicked))),
+                            menuItem("Extract  " + shown, () -> machineOp(new Op.Push(part))),
                             menuItem("Copy  " + shown, () -> {
-                                ClipboardExport.copy(clicked);
-                                noteFromFx(ClipboardExport.describe(clicked));
+                                ClipboardExport.copy(part);
+                                noteFromFx(ClipboardExport.describe(part));
                             }),
-                            menuItem("Plot  " + shown, () -> plotValue(clicked)),
-                            new SeparatorMenuItem());
+                            menuItem("Plot  " + shown, () -> plotValue(part)));
+            // Rewriting needs the address; extracting and copying do not. A part with no address —
+            // one the layout synthesised — still offers those three and simply cannot offer these.
+            Menu rewrite = new Menu("Rewrite  " + shown);
+            PART_TRANSFORMS.forEach((title, head) ->
+                    rewrite.getItems().add(menuItem(title, () -> rewritePart(position, clicked, head))));
+            menu.getItems().addAll(rewrite, new SeparatorMenuItem());
         }
         menu.getItems()
                 .addAll(
@@ -468,6 +487,35 @@ public final class CalcWindow {
                             menuItem("Drop", () -> runCommand("stack.drop")));
         }
         return menu;
+    }
+
+    /**
+     * Transform one part of a stack entry, in place.
+     *
+     * <p>What a rendered formula makes possible and a line of text does not: factor the
+     * {@code 1 - x^2} inside an answer without retyping the answer around it.
+     *
+     * <p>The address is re-checked against what was clicked before anything is written. A menu can
+     * outlive the value it was opened on — an undo, another command, a slow engine returning — and a
+     * path that now addresses something else would rewrite the wrong part in silence. Saying so and
+     * doing nothing is the only safe answer.
+     */
+    private void rewritePart(int position, MathLayout.Selection selection, String head) {
+        onMachine(m -> {
+            Expr entry = m.state().at(position);
+            Expr current = ExprPath.at(entry, selection.path());
+            if (current == null || !current.equals(selection.expr())) {
+                m.record(new TrailEntry(TrailEntry.Kind.NOTE, "that part has moved; nothing was changed"));
+                return;
+            }
+            Expr transformed = askEngine(Exprs.call(head, current), m.modes());
+            Expr rebuilt = ExprPath.replace(entry, selection.path(), transformed);
+            if (rebuilt == null || rebuilt.equals(entry)) {
+                m.record(new TrailEntry(TrailEntry.Kind.NOTE, "nothing to change there"));
+                return;
+            }
+            m.apply(new Op.ReplaceAt(position, rebuilt));
+        });
     }
 
     ContextMenu trailMenu(TrailEntry entry) {
@@ -955,7 +1003,8 @@ public final class CalcWindow {
                     // What was actually clicked, which is usually a PART of the formula rather than
                     // the whole of it. This is the one thing a rendered formula can offer that a line
                     // of text cannot.
-                    Expr under = e.getTarget() instanceof javafx.scene.Node n ? MathLayout.exprAt(n) : null;
+                    MathLayout.Selection under =
+                            e.getTarget() instanceof javafx.scene.Node n ? MathLayout.selectionAt(n) : null;
                     stackMenu(value, stack.size() - getIndex(), under).show(this, e.getScreenX(), e.getScreenY());
                     e.consume();
                 });

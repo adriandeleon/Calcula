@@ -129,6 +129,37 @@ class MachineTest {
     }
 
     @Test
+    void replaceAtEditsAnEntryWhereItStandsAndUndoes() {
+        // The stack is a document, so editing entry 2 in place is ordinary — and it has to undo like
+        // everything else.
+        Machine m = new Machine(Evaluator.IDENTITY);
+        m.applyAll(List.of(push("1"), push("2"), push("3")));
+        m.apply(new Op.ReplaceAt(2, Exprs.of(99)));
+        assertEquals(List.of("1", "99", "3"), display(m));
+
+        assertTrue(m.undo());
+        assertEquals(List.of("1", "2", "3"), display(m));
+    }
+
+    @Test
+    void replaceAtStoresTheValueVerbatimRatherThanEvaluatingIt() {
+        // Unlike Push. The caller has already decided what this should be; re-evaluating could undo
+        // the very transform that was asked for.
+        Machine m = new Machine((input, modes) -> Exprs.of(0));
+        m.apply(new Op.Push(Exprs.of(1)));
+        m.apply(new Op.ReplaceAt(1, Exprs.of(7)));
+        assertEquals(List.of("7"), display(m));
+    }
+
+    @Test
+    void replaceAtPastTheEndOfTheStackChangesNothing() {
+        Machine m = new Machine(Evaluator.IDENTITY);
+        m.apply(push("1"));
+        assertThrows(MachineException.class, () -> m.apply(new Op.ReplaceAt(5, Exprs.of(9))));
+        assertEquals(List.of("1"), display(m));
+    }
+
+    @Test
     void anEngineFailureIsReportedAsAMachineErrorRatherThanEscaping() {
         Machine m = new Machine((input, modes) -> {
             throw new IllegalStateException("engine exploded");

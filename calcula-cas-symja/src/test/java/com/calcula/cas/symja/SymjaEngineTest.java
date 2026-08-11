@@ -3,6 +3,7 @@ package com.calcula.cas.symja;
 import com.calcula.cas.CasEngine;
 import com.calcula.cas.CasException;
 import com.calcula.expr.Expr;
+import com.calcula.expr.ExprPath;
 import com.calcula.machine.Evaluator;
 import com.calcula.machine.Machine;
 import com.calcula.machine.Modes;
@@ -152,6 +153,23 @@ class SymjaEngineTest {
         m.apply(new Op.SetModes(m.modes().withAngle(Modes.Angle.RADIANS).withFractions(true)));
         m.apply(new Op.Push(Parser.parse("sin(30)")));
         assertEquals("sin(30)", Formatter.format(m.state().at(1)));
+    }
+
+    @Test
+    void onePartOfAnAnswerCanBeRewrittenInPlace() throws Exception {
+        // The whole point of addressing subterms: factor the 1 - x^2 inside an answer and get the
+        // answer back with only that part changed. Nothing about this is expressible by retyping.
+        Expr answer = Parser.parse("sqrt(1 - x^2) + arcsin(x)");
+        java.util.List<Integer> insideTheRadical = java.util.List.of(0, 0);
+
+        Expr part = ExprPath.at(answer, insideTheRadical);
+        assertEquals("1 - x^2", Formatter.format(part));
+
+        Expr factored = engine.eval(com.calcula.expr.Exprs.call("Factor", part));
+        Expr rebuilt = ExprPath.replace(answer, insideTheRadical, factored);
+
+        assertEquals("sqrt((1 - x)*(1 + x)) + arcsin(x)", Formatter.format(rebuilt));
+        assertEquals("arcsin(x)", Formatter.format(ExprPath.at(rebuilt, java.util.List.of(1))), "the rest is intact");
     }
 
     @Test

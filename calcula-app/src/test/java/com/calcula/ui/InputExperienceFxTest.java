@@ -7,6 +7,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 
 import com.calcula.parse.Parser;
+import com.calcula.ui.math.MathLayout;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -131,11 +132,16 @@ class InputExperienceFxTest {
         CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
         FxTestSupport.realize(window.getRoot());
 
-        List<String> items = FxTestSupport.callOnFx(() ->
-                window.stackMenu(Parser.parse("integrate(x*sin(x), x)"), 1, Parser.parse("sin(x)")).getItems().stream()
-                        .map(MenuItem::getText)
-                        .filter(t -> t != null)
-                        .toList());
+        List<String> items = FxTestSupport.callOnFx(() -> window
+                .stackMenu(
+                        Parser.parse("integrate(x*sin(x), x)"),
+                        1,
+                        new MathLayout.Selection(Parser.parse("sin(x)"), List.of(0, 1)))
+                .getItems()
+                .stream()
+                .map(MenuItem::getText)
+                .filter(t -> t != null)
+                .toList());
 
         assertTrue(items.contains("Extract  sin(x)"), items.toString());
         assertTrue(items.contains("Copy  sin(x)"), items.toString());
@@ -148,11 +154,13 @@ class InputExperienceFxTest {
     void clickingTheWholeFormulaDoesNotOfferItTwice() throws Exception {
         CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
         FxTestSupport.realize(window.getRoot());
-        List<String> items = FxTestSupport.callOnFx(
-                () -> window.stackMenu(Parser.parse("x + 1"), 1, Parser.parse("x + 1")).getItems().stream()
-                        .map(MenuItem::getText)
-                        .filter(t -> t != null)
-                        .toList());
+        List<String> items = FxTestSupport.callOnFx(() -> window
+                .stackMenu(Parser.parse("x + 1"), 1, new MathLayout.Selection(Parser.parse("x + 1"), List.of()))
+                .getItems()
+                .stream()
+                .map(MenuItem::getText)
+                .filter(t -> t != null)
+                .toList());
         assertFalse(items.stream().anyMatch(t -> t.startsWith("Extract")), items.toString());
         FxTestSupport.runOnFx(window::dispose);
     }
@@ -165,7 +173,8 @@ class InputExperienceFxTest {
                 .stackMenu(
                         Parser.parse("f(aaaaaaaaaa + bbbbbbbbbb + cccccccccc + dddddddddd)"),
                         1,
-                        Parser.parse("aaaaaaaaaa + bbbbbbbbbb + cccccccccc + dddddddddd"))
+                        new MathLayout.Selection(
+                                Parser.parse("aaaaaaaaaa + bbbbbbbbbb + cccccccccc + dddddddddd"), List.of(0)))
                 .getItems()
                 .stream()
                 .map(MenuItem::getText)
