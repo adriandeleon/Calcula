@@ -49,7 +49,7 @@ final class Lexer {
             char c = src.charAt(i);
             if (Character.isDigit(c) || (c == '.' && i + 1 < src.length() && Character.isDigit(src.charAt(i + 1)))) {
                 out.add(new Token(Kind.NUMBER, number(), start));
-            } else if (Character.isLetter(c) || c == '_') {
+            } else if (Character.isLetter(c) || c == '_' || c == '$') {
                 out.add(new Token(Kind.SYMBOL, identifier(), start));
             } else {
                 out.add(punctuation(start, c));
@@ -95,6 +95,9 @@ final class Lexer {
 
     private String identifier() {
         int start = i;
+        if (i < src.length() && src.charAt(i) == '$') {
+            i++; // a stack reference: $ alone, or $ followed by a position
+        }
         while (i < src.length() && (Character.isLetterOrDigit(src.charAt(i)) || src.charAt(i) == '_')) {
             i++;
         }
