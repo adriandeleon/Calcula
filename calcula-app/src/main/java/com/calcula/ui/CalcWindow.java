@@ -1,5 +1,7 @@
 package com.calcula.ui;
 
+import java.io.File;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -13,6 +15,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
@@ -32,6 +35,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.stage.FileChooser;
 
 import com.calcula.AppInfo;
 import com.calcula.SessionLog;
@@ -42,6 +46,9 @@ import com.calcula.command.CommandGroups;
 import com.calcula.command.CommandRegistry;
 import com.calcula.config.Settings;
 import com.calcula.config.SettingsStore;
+import com.calcula.doc.Sheet;
+import com.calcula.doc.SheetException;
+import com.calcula.doc.SheetStore;
 import com.calcula.export.MathmlWriter;
 import com.calcula.export.TexWriter;
 import com.calcula.export.TypstWriter;
@@ -166,6 +173,24 @@ public final class CalcWindow {
     private final Keymap keymap = new Keymap();
     private final KeyDispatcher dispatcher = new KeyDispatcher(keymap, registry);
     private final Machine machine;
+
+    /** Where this sheet lives on disk, or null for one that has never been saved. */
+    private Path sheetFile;
+
+    /**
+     * Whether there is work that saving would preserve.
+     *
+     * <p>Set by any publish that follows a user action, cleared by save, open and new. That
+     * OVER-reports — undoing back to the state that was saved still shows as modified — and the
+     * asymmetry is deliberate: an over-report costs a needless prompt, an under-report costs the
+     * user's work. The alternative, comparing the whole sheet on every publish, spends a trail-length
+     * walk per keystroke to remove a prompt nobody minds.
+     */
+    private boolean dirty;
+
+    /** Told when the file or the modified flag changes, so the stage can retitle. */
+    private Runnable onSheetChanged = () -> {};
+
     private final OverlayHost overlays = new OverlayHost();
     private final SettingsStore settingsStore = new SettingsStore(SessionLog.configDir());
     private final CommandPalette palette;
@@ -330,8 +355,17 @@ public final class CalcWindow {
         input.requestFocus();
     }
 
+    /**
+     * What the window is called: the sheet, then the application.
+     *
+     * <p>The sheet first, because that is what changes and what the user is looking for in a window
+     * list. The bullet is the platform-independent way of saying "not saved" — a title that ends in a
+     * mark you can see at a glance beats one that says "(modified)" in a language.
+     */
     public String title() {
-        return AppInfo.NAME + (AppInfo.isSnapshot() ? "  —  " + AppInfo.VERSION : "");
+        String name = sheetFile == null ? "Untitled" : SheetStore.titleOf(sheetFile);
+        return (dirty ? "• " : "") + name + "  —  " + AppInfo.NAME
+                + (AppInfo.isSnapshot() ? " " + AppInfo.VERSION : "");
     }
 
     // ---------------------------------------------------------------- engine
@@ -490,9 +524,13 @@ public final class CalcWindow {
                         Settings.MIN_MATH_SIZE,
                         Settings.MAX_MATH_SIZE,
                         this::applyMathSize));
+        registry.register("file.new", "New sheet", "Start again, after asking about unsaved work", this::newSheet);
+        registry.register("file.open", "Open sheet…", "Open a saved sheet", this::openSheet);
+        registry.register("file.save", "Save sheet", "Write this sheet to its file", () -> saveSheet());
+        registry.register("file.saveAs", "Save sheet as…", "Write this sheet to a new file", () -> saveSheetAs());
         registry.register("app.palette", "Commands…", "Search every command by name", palette::show);
         registry.register("app.settings", "Settings…", "Preferences a new session starts from", settingsDialog::show);
-        registry.register("app.quit", "Quit", "Close Calcula", () -> javafx.application.Platform.exit());
+        registry.register("app.quit", "Quit", "Close Calcula", this::quit);
         registry.register("help.about", "About Calcula", "Version and licence", this::showAbout);
         registry.register(
                 "help.functions", "Functions…", "Everything callable, grouped and filterable", functionSheet::show);
@@ -911,6 +949,16 @@ public final class CalcWindow {
         for (String zoomOut : List.of("C-Minus", "C-Subtract", "Cmd-Minus")) {
             keymap.bind(zoomOut, "stack.zoomOut");
         }
+        // The chords every application uses for these, in both spellings — Chords emits Cmd- on
+        // macOS and C- elsewhere.
+        keymap.bind("C-n", "file.new");
+        keymap.bind("Cmd-n", "file.new");
+        keymap.bind("C-o", "file.open");
+        keymap.bind("Cmd-o", "file.open");
+        keymap.bind("C-s", "file.save");
+        keymap.bind("Cmd-s", "file.save");
+        keymap.bind("C-S-s", "file.saveAs");
+        keymap.bind("Cmd-S-s", "file.saveAs");
         keymap.bind("M-x", "app.palette");
         keymap.bind("C-,", "app.settings");
         keymap.bind("Cmd-,", "app.settings");
@@ -1027,6 +1075,18 @@ public final class CalcWindow {
      * snapshot, so the window never touches the machine from two threads.
      */
     private void onMachine(Consumer<Machine> work) {
+        onMachine(work, null);
+    }
+
+    /**
+     * As above, with something to run on the FX thread once the result has been published.
+     *
+     * <p>The callback travels WITH the unit of work rather than being a flag set beside it. Opening a
+     * sheet has to mark it unmodified, and the publish that follows the load marks it modified — so
+     * doing the clean before the enqueue means the load itself dirties the file it just opened, and
+     * doing it with a shared flag means a second operation slipping into the queue consumes it.
+     */
+    private void onMachine(Consumer<Machine> work, Runnable afterPublish) {
         beginWork();
         worker.execute(() -> {
             try {
@@ -1040,6 +1100,9 @@ public final class CalcWindow {
             Platform.runLater(() -> {
                 publish(snapshot, trail);
                 endWork();
+                if (afterPublish != null) {
+                    afterPublish.run();
+                }
             });
         });
     }
@@ -1220,6 +1283,7 @@ public final class CalcWindow {
     }
 
     private void publish(CalcState snapshot, List<TrailEntry> trail) {
+        markDirty();
         stack.setAll(snapshot.stack());
         trailLines.setAll(trail);
         if (!trailLines.isEmpty()) {
@@ -1838,6 +1902,232 @@ public final class CalcWindow {
         if (example.command() != null) {
             runCommand(example.command());
         }
+    }
+
+    /** Leave, after asking about unsaved work — the one exit that must not lose a sheet silently. */
+    void quit() {
+        if (confirmClose()) {
+            Platform.exit();
+        }
+    }
+
+    /** Whether it is safe to close: asks about unsaved work, and answers what the user chose. */
+    public boolean confirmClose() {
+        return confirmDiscard("quitting");
+    }
+
+    // ---------------------------------------------------------------- files
+
+    /** The sheet as it stands, ready to write. Must be read on the worker: it reads the machine. */
+    private Sheet currentSheet() {
+        return Sheet.of(machine.state(), List.copyOf(machine.trail()));
+    }
+
+    private void markDirty() {
+        if (!dirty) {
+            dirty = true;
+            onSheetChanged.run();
+        }
+    }
+
+    private void markClean(Path file) {
+        sheetFile = file;
+        dirty = false;
+        onSheetChanged.run();
+    }
+
+    /** Told when the sheet's name or modified state changes, so the stage can retitle. */
+    public void setOnSheetChanged(Runnable handler) {
+        this.onSheetChanged = handler == null ? () -> {} : handler;
+    }
+
+    public Path sheetFile() {
+        return sheetFile;
+    }
+
+    public boolean isDirty() {
+        return dirty;
+    }
+
+    /**
+     * Start again, after asking about unsaved work.
+     *
+     * <p>Clearing the machine rather than building a new one: the machine is the thing every queued
+     * operation holds a reference to, and swapping it under a worker that is mid-call is a race for
+     * no gain.
+     */
+    void newSheet() {
+        if (!confirmDiscard("starting a new sheet")) {
+            return;
+        }
+        onMachine(m -> m.reset(CalcState.EMPTY.withModes(settings.modes())), () -> markClean(null));
+    }
+
+    void openSheet() {
+        if (!confirmDiscard("opening another sheet")) {
+            return;
+        }
+        FileChooser chooser = chooser("Open sheet", null);
+        File chosen = chooser.showOpenDialog(stageOrNull());
+        if (chosen != null) {
+            openSheet(chosen.toPath());
+        }
+    }
+
+    /** Load a file into this window, replacing whatever was here; reports a failure in a dialog. */
+    void openSheet(Path file) {
+        try {
+            load(file);
+        } catch (SheetException e) {
+            // Named rather than swallowed: the message says which line, which is the whole point of a
+            // text format someone can go and fix.
+            problem("Could not open " + file.getFileName(), e.getMessage());
+        }
+    }
+
+    /**
+     * The same load without the dialog: true when it worked.
+     *
+     * <p>Visible for tests, which cannot dismiss a modal — and useful in its own right for anything
+     * that wants to try a file and decide for itself what to say.
+     */
+    boolean openSheetQuietly(Path file) {
+        try {
+            load(file);
+            return true;
+        } catch (SheetException e) {
+            return false;
+        }
+    }
+
+    /** Read and install, or throw. The stack is untouched when the read fails. */
+    private void load(Path file) {
+        Sheet sheet = SheetStore.read(file);
+        onMachine(m -> m.restore(sheet.state(), sheet.trail()), () -> markClean(file));
+    }
+
+    /** Write to a named file. Visible for tests, which cannot answer a file chooser. */
+    boolean saveTo(Path file) {
+        return writeTo(file);
+    }
+
+    /** Save to the known file, or ask for one. Returns false when the user backed out. */
+    boolean saveSheet() {
+        return sheetFile == null ? saveSheetAs() : writeTo(sheetFile);
+    }
+
+    boolean saveSheetAs() {
+        FileChooser chooser = chooser("Save sheet", sheetFile);
+        File chosen = chooser.showSaveDialog(stageOrNull());
+        return chosen != null && writeTo(SheetStore.withExtension(chosen.toPath()));
+    }
+
+    /**
+     * Write, on the worker, and wait for it.
+     *
+     * <p>Two things force this shape. The sheet is read from the machine and the machine belongs to
+     * the worker, so the read cannot happen here; and the answer has to be TRUE OR FALSE BEFORE this
+     * returns, because {@link #confirmDiscard} uses it to decide whether throwing the work away is
+     * safe. An asynchronous save that optimistically reported success would, on a full disk or a
+     * read-only folder, discard the sheet it had just failed to write.
+     *
+     * <p>So the FX thread blocks — briefly, and only on an explicit save, where the user is already
+     * waiting on the action they asked for. The bound is there so a wedged worker degrades to a
+     * refusal rather than a frozen window.
+     *
+     * <p>Deliberately NOT through {@code onMachine}: saving changes nothing, and the publish that
+     * comes with it would mark the sheet modified again the instant it was written.
+     */
+    private boolean writeTo(Path file) {
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<String> failure =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        worker.execute(() -> {
+            try {
+                SheetStore.write(file, Sheet.of(machine.state(), List.copyOf(machine.trail())));
+            } catch (RuntimeException e) {
+                failure.set(describe(e));
+            } finally {
+                done.countDown();
+            }
+        });
+        try {
+            if (!done.await(SAVE_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)) {
+                problem("Could not save " + file.getFileName(), "the calculator is busy; try again in a moment");
+                return false;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+        if (failure.get() != null) {
+            problem("Could not save " + file.getFileName(), failure.get());
+            return false;
+        }
+        markClean(file);
+        return true;
+    }
+
+    /** Long enough for any real write, short enough that a wedged worker does not freeze the window. */
+    private static final int SAVE_TIMEOUT_SECONDS = 10;
+
+    /**
+     * Ask before throwing work away.
+     *
+     * <p>Three answers, not two: Save is what someone who has just been told they have unsaved work
+     * usually wants, and offering only "discard or cancel" makes them cancel, save by hand, and try
+     * again.
+     */
+    private boolean confirmDiscard(String what) {
+        if (!dirty || currentIsEmpty()) {
+            return true;
+        }
+        Alert ask = new Alert(Alert.AlertType.CONFIRMATION);
+        ask.setTitle("Unsaved work");
+        ask.setHeaderText("This sheet has changes that are not saved.");
+        ask.setContentText("Save them before " + what + "?");
+        ButtonType save = new ButtonType("Save");
+        ButtonType discard = new ButtonType("Discard");
+        ask.getButtonTypes().setAll(save, discard, ButtonType.CANCEL);
+        ButtonType answer = ask.showAndWait().orElse(ButtonType.CANCEL);
+        if (answer == save) {
+            return saveSheet();
+        }
+        return answer == discard;
+    }
+
+    /** A cheap "is there anything here at all", so a pristine window never prompts. */
+    private boolean currentIsEmpty() {
+        return stack.isEmpty() && trailLines.isEmpty();
+    }
+
+    private FileChooser chooser(String title, Path near) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(title);
+        chooser.getExtensionFilters()
+                .addAll(
+                        new FileChooser.ExtensionFilter("Calcula sheet", "*" + SheetStore.EXTENSION),
+                        new FileChooser.ExtensionFilter("Any file", "*.*"));
+        if (near != null && near.getParent() != null && java.nio.file.Files.isDirectory(near.getParent())) {
+            chooser.setInitialDirectory(near.getParent().toFile());
+            chooser.setInitialFileName(near.getFileName().toString());
+        } else {
+            chooser.setInitialFileName("sheet" + SheetStore.EXTENSION);
+        }
+        return chooser;
+    }
+
+    private javafx.stage.Window stageOrNull() {
+        return sceneRoot.getScene() == null ? null : sceneRoot.getScene().getWindow();
+    }
+
+    /** A failure the user has to see: a file that would not open is not an echo-area matter. */
+    private void problem(String header, String detail) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle("Calcula");
+        alert.setHeaderText(header);
+        alert.setContentText(detail);
+        alert.showAndWait();
     }
 
     private Region buildToolBar() {

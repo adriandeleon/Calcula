@@ -240,6 +240,36 @@ public final class Machine {
         return true;
     }
 
+    // ------------------------------------------------------------------ documents
+
+    /**
+     * Replace everything: the state, the trail, and the history.
+     *
+     * <p>The history goes too, and must. Undo after opening a file would otherwise walk backwards into
+     * the sheet that was there before — a stack from one document appearing inside another, which is
+     * indistinguishable from corruption and impossible to explain.
+     */
+    public void restore(CalcState newState, List<TrailEntry> newTrail) {
+        if (newState == null) {
+            throw new IllegalArgumentException("restoring nothing");
+        }
+        state = newState;
+        undoStack.clear();
+        redoStack.clear();
+        trail.clear();
+        if (newTrail != null) {
+            trail.addAll(
+                    newTrail.size() > MAX_TRAIL
+                            ? newTrail.subList(newTrail.size() - MAX_TRAIL, newTrail.size())
+                            : newTrail);
+        }
+    }
+
+    /** Start over from a given state, with an empty trail and no history. */
+    public void reset(CalcState initial) {
+        restore(initial, List.of());
+    }
+
     // ------------------------------------------------------------------ trail
 
     /** Record a line in the trail. The machine does not write to it itself; the caller decides what is worth keeping. */

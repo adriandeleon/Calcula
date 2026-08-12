@@ -28,10 +28,11 @@ public final class CommandGroups {
      * The menus, in the order they appear.
      *
      * <p>Edit before Stack because undo is the one people reach for first, and Help last by every
-     * platform convention there is.
+     * platform convention there is. File sits after the application menu, where the platform puts it.
      */
     public static final List<Group> MENUS = List.of(
             new Group("Calcula", "app."),
+            new Group("File", "file."),
             new Group("Edit", "edit."),
             new Group("Stack", "stack."),
             new Group("Mode", "mode."),

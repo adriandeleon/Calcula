@@ -52,6 +52,15 @@ public final class App extends Application {
         window.setOnThemeChanged(theme -> Themes.apply(scene, theme));
 
         stage.setTitle(window.title());
+        // The title carries the sheet's name and whether it is saved, so it has to follow both.
+        window.setOnSheetChanged(() -> stage.setTitle(window.title()));
+        // The close button is an exit like any other, and the one people use. Consuming the request
+        // is what lets the prompt say no; without this the window shuts while the dialog is still up.
+        stage.setOnCloseRequest(event -> {
+            if (!window.confirmClose()) {
+                event.consume();
+            }
+        });
         stage.setScene(scene);
         stage.getIcons().addAll(icons());
         stage.show();
