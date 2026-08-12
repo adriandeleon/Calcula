@@ -76,7 +76,7 @@ Two things there are load-bearing and easy to undo by accident:
 
 ## Status
 
-Foundation complete and green (296 tests), and it packages into a native app. The layers,
+Foundation complete and green (550 tests), and it packages into a native app. The layers,
 innermost first:
 
 | Package | What it is |
@@ -89,7 +89,10 @@ innermost first:
 | `cas` + `calcula-cas-symja` | The engine seam and its Symja implementation |
 | `ui` | Window, chord translation, the Rule & Plate themes |
 | `ui.math` | Expr → JavaFX nodes: real two-dimensional typeset mathematics |
-| `export` | TeX and MathML writers over the same tree |
+| `export` | TeX, MathML and Typst writers over the same tree |
+| `doc` | The `.calc` file: a sheet, and the plain-text format it saves as |
+| `help` | The worked examples, each of which runs when pressed |
+| `pdf` | A hand-rolled one-page PDF, so the sheet exports without a dependency |
 | `plot` | Expr → double closure, sampler with pole breaks, viewport, ticks |
 | `ui.plot` | The canvas, with drag and scroll |
 | `calcula-dist` | Delivery only: jlink, jpackage, the AOT cache, and staging the CAS |
@@ -338,6 +341,40 @@ Precision is read from the input line: type `20`, then `M-m p`. The input line i
 application's minibuffer, so that is the gesture Calc uses for a numeric prefix, and it
 needs no dialog.
 
+### Sheets, tabs and files
+
+A sheet is a stack, a trail, the variables and the modes it was worked under. It saves as
+`.calc` — one keyword per line, in the calculator's own notation:
+
+```
+Calcula 1
+mode angle rad
+var n 42
+stack (x + 1)/(x - 1)
+trail input 1/3 + 1/6
+```
+
+Plain text on purpose. The file is something you can open in an editor, diff, hand-write,
+or paste half of into a chat, and it cost no dependency — which matters here because the
+modular half of this build has none, and that is why there is no moditect step.
+
+The property the format rests on is that `Formatter` and `Parser` are inverses. A value is
+saved by formatting it and loaded by parsing that back, so an expression printed in a form
+the parser cannot read would be data loss at *save* time — the file looks healthy and the
+value comes back wrong. Twenty shapes are checked over the round trip.
+
+It is strict about its own version and forgiving about nothing else: a line it does not
+understand is an error naming the line number, not a line quietly dropped. Half a sheet
+loaded without complaint is worse than a refusal, because the missing half is found later,
+by which time it has been saved over.
+
+Several sheets can be open at once, each with **its own machine** — so undo, the trail and
+the stack belong to the sheet rather than to the window. The tab strip is hidden while
+there is only one, because a row of chrome that always reads "Untitled" is chrome for its
+own sake. New always opens a tab and so destroys nothing; Open loads into the current
+sheet when it is untouched and into a new one otherwise; quitting asks about every sheet
+with unsaved work, not just the visible one.
+
 ### Still open
 
 **Which input model is the default.** Deliberately undecided. Both readers work,
@@ -350,9 +387,15 @@ needs no dialog.
   runs on any of them; nothing automates it yet, and only macOS has been built for real.
 - Notarization, so a downloaded DMG opens without a Gatekeeper warning. The app is
   ad-hoc-signed, which is enough for a locally built copy and not for a download.
+- Implicit multiplication in algebraic entry: `2 x y` is a parse error where a CAS would
+  usually read it as a product. Found by an example that would not run.
+- A vector (non-raster) PDF. The page is currently a picture of the sheet, so its
+  mathematics cannot be selected or searched; a text PDF means embedding fonts and
+  re-implementing the layout in PDF operators, which is a second renderer and therefore
+  the one that would drift.
 - Smaller things deferred along the way: a shaded plot area labelled with the closed-form
-  integral, a tangent line at the cursor, and — still open — which input model is the
-  default.
+  integral, a tangent line at the cursor, per-sheet input history, and — still open —
+  which input model is the default.
 
 ## Notes
 
