@@ -2,6 +2,7 @@ package com.calcula.ui;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -172,21 +173,66 @@ public final class CalcWindow {
     private final CommandRegistry registry = new CommandRegistry();
     private final Keymap keymap = new Keymap();
     private final KeyDispatcher dispatcher = new KeyDispatcher(keymap, registry);
-    private final Machine machine;
+    /**
+     * One open sheet.
+     *
+     * <p>A machine each, so undo, the trail and the stack belong to the sheet rather than to the
+     * window — switching tabs and undoing has to undo what happened in THAT sheet, and a shared
+     * history would make the two documents' pasts a single interleaved one.
+     */
+    private static final class Document {
 
-    /** Where this sheet lives on disk, or null for one that has never been saved. */
-    private Path sheetFile;
+        final Machine machine;
+
+        /** Where this sheet lives on disk, or null for one that has never been saved. */
+        Path file;
+
+        /**
+         * Whether there is work that saving would preserve.
+         *
+         * <p>Set by any publish that follows a user action, cleared by save, open and new. That
+         * OVER-reports — undoing back to the state that was saved still shows as modified — and the
+         * asymmetry is deliberate: an over-report costs a needless prompt, an under-report costs the
+         * user's work. Comparing the whole sheet on every publish would spend a trail-length walk per
+         * keystroke to remove a prompt nobody minds.
+         */
+        boolean dirty;
+
+        /**
+         * What this sheet last showed.
+         *
+         * <p>Kept so that switching to a sheet paints instantly from the FX thread. Going back to the
+         * machine for it would put the switch behind the worker queue — click a tab while a CAS call
+         * is in flight and the window would keep showing the sheet you just left, for as long as that
+         * call takes. Updated by every publish, including one for a sheet that is not on screen.
+         */
+        CalcState shown = CalcState.EMPTY;
+
+        List<TrailEntry> shownTrail = List.of();
+
+        Document(Machine machine) {
+            this.machine = machine;
+        }
+
+        String title() {
+            return file == null ? "Untitled" : SheetStore.titleOf(file);
+        }
+    }
+
+    private final List<Document> documents = new ArrayList<>();
+
+    private Document current;
 
     /**
-     * Whether there is work that saving would preserve.
+     * The modes as last published.
      *
-     * <p>Set by any publish that follows a user action, cleared by save, open and new. That
-     * OVER-reports — undoing back to the state that was saved still shows as modified — and the
-     * asymmetry is deliberate: an over-report costs a needless prompt, an under-report costs the
-     * user's work. The alternative, comparing the whole sheet on every publish, spends a trail-length
-     * walk per keystroke to remove a prompt nobody minds.
+     * <p>The mode line and the menu are drawn on the FX thread and the machine belongs to the worker,
+     * so they read this rather than reaching across. It also makes switching sheets correct for free:
+     * the modes shown are the ones that arrived with the sheet being shown.
      */
-    private boolean dirty;
+    private Modes shownModes = Modes.DEFAULTS;
+
+    private SheetTabs tabs;
 
     /** Told when the file or the modified flag changes, so the stage can retitle. */
     private Runnable onSheetChanged = () -> {};
@@ -256,7 +302,8 @@ public final class CalcWindow {
         // The saved modes are where a NEW session starts. They are seeded into the machine's initial
         // state rather than pushed as an operation, so the first thing in the undo history is the
         // user's first calculation and not the act of loading their preferences.
-        machine = new Machine(Evaluator.numericThen(this::askEngine), CalcState.EMPTY.withModes(settings.modes()));
+        current = newDocument();
+        documents.add(current);
 
         buildStack();
         buildTrail();
@@ -286,13 +333,20 @@ public final class CalcWindow {
         // top of the window there and the first row of it everywhere else.
         root.setTop(new VBox(menuBar.node(), buildToolBar()));
 
+        tabs = new SheetTabs(this::selectSheet, this::closeSheet, this::newSheet);
+        renderTabs();
+
         VBox trailPane = new VBox(buildTrailBar(), trailView);
         VBox.setVgrow(trailView, Priority.ALWAYS);
         SplitPane split = new SplitPane(trailPane, stackView);
         split.setDividerPositions(0.28);
         SplitPane.setResizableWithParent(trailPane, Boolean.FALSE);
 
-        root.setCenter(split);
+        // The strip sits above both panes rather than over the stack alone: a sheet is the trail and
+        // the stack together, so a tab that spanned only half of it would be saying something false.
+        VBox centre = new VBox(tabs.node(), split);
+        VBox.setVgrow(split, Priority.ALWAYS);
+        root.setCenter(centre);
         root.setBottom(new VBox(buildModeLine(), buildEchoArea()));
         root.getStyleClass().add("calc-root");
 
@@ -308,7 +362,7 @@ public final class CalcWindow {
         sceneRoot.getChildren().add(root);
         overlays.install(sceneRoot);
         refreshModeLine();
-        menuBar.refresh(machine.modes(), reader instanceof RpnReader);
+        menuBar.refresh(shownModes, reader instanceof RpnReader);
     }
 
     public Region getRoot() {
@@ -347,7 +401,7 @@ public final class CalcWindow {
         boolean wantRpn = updated.isRpn();
         if (wantRpn != reader instanceof RpnReader) {
             reader = wantRpn ? new RpnReader() : new AlgebraicReader();
-            menuBar.refresh(machine.modes(), wantRpn);
+            menuBar.refresh(shownModes, wantRpn);
         }
     }
 
@@ -363,8 +417,7 @@ public final class CalcWindow {
      * mark you can see at a glance beats one that says "(modified)" in a language.
      */
     public String title() {
-        String name = sheetFile == null ? "Untitled" : SheetStore.titleOf(sheetFile);
-        return (dirty ? "• " : "") + name + "  —  " + AppInfo.NAME
+        return (current.dirty ? "• " : "") + current.title() + "  —  " + AppInfo.NAME
                 + (AppInfo.isSnapshot() ? " " + AppInfo.VERSION : "");
     }
 
@@ -528,6 +581,9 @@ public final class CalcWindow {
         registry.register("file.open", "Open sheet…", "Open a saved sheet", this::openSheet);
         registry.register("file.save", "Save sheet", "Write this sheet to its file", () -> saveSheet());
         registry.register("file.saveAs", "Save sheet as…", "Write this sheet to a new file", () -> saveSheetAs());
+        registry.register("file.close", "Close sheet", "Close this sheet, asking about unsaved work", this::closeSheet);
+        registry.register("file.nextSheet", "Next sheet", "Show the next open sheet", () -> cycleSheet(1));
+        registry.register("file.previousSheet", "Previous sheet", "Show the previous open sheet", () -> cycleSheet(-1));
         registry.register("app.palette", "Commands…", "Search every command by name", palette::show);
         registry.register("app.settings", "Settings…", "Preferences a new session starts from", settingsDialog::show);
         registry.register("app.quit", "Quit", "Close Calcula", this::quit);
@@ -959,6 +1015,14 @@ public final class CalcWindow {
         keymap.bind("Cmd-s", "file.save");
         keymap.bind("C-S-s", "file.saveAs");
         keymap.bind("Cmd-S-s", "file.saveAs");
+        keymap.bind("C-w", "file.close");
+        keymap.bind("Cmd-w", "file.close");
+        // Ctrl-Tab is the platform gesture for cycling documents; the bracket pair is what an editor
+        // binds when Tab is spoken for, and here Tab already swaps the top two stack entries.
+        keymap.bind("C-TAB", "file.nextSheet");
+        keymap.bind("C-S-TAB", "file.previousSheet");
+        keymap.bind("Cmd-S-]", "file.nextSheet");
+        keymap.bind("Cmd-S-[", "file.previousSheet");
         keymap.bind("M-x", "app.palette");
         keymap.bind("C-,", "app.settings");
         keymap.bind("Cmd-,", "app.settings");
@@ -1087,18 +1151,32 @@ public final class CalcWindow {
      * doing it with a shared flag means a second operation slipping into the queue consumes it.
      */
     private void onMachine(Consumer<Machine> work, Runnable afterPublish) {
+        // Captured HERE, on the FX thread, not read on the worker. Reading the field there would let
+        // an operation queued against one sheet run against whichever sheet happened to be current
+        // when its turn came — a value landing on another document's stack.
+        Document doc = current;
+        boolean userAction = work != IDLE;
         beginWork();
         worker.execute(() -> {
             try {
-                work.accept(machine);
+                work.accept(doc.machine);
             } catch (RuntimeException e) {
-                machine.recordError(describe(e));
+                doc.machine.recordError(describe(e));
             }
-            CalcState snapshot = machine.state();
+            CalcState snapshot = doc.machine.state();
             // Copied here, on the worker, so the FX thread never reads the machine.
-            List<TrailEntry> trail = List.copyOf(machine.trail());
+            List<TrailEntry> trail = List.copyOf(doc.machine.trail());
             Platform.runLater(() -> {
-                publish(snapshot, trail);
+                doc.shown = snapshot;
+                doc.shownTrail = trail;
+                if (userAction) {
+                    markDirty(doc);
+                }
+                // A result for a sheet that is no longer showing must not paint over the one that is.
+                // It is not lost: the sheet keeps it, and it appears when that tab is selected.
+                if (doc == current) {
+                    publish(snapshot, trail);
+                }
                 endWork();
                 if (afterPublish != null) {
                     afterPublish.run();
@@ -1106,6 +1184,14 @@ public final class CalcWindow {
             });
         });
     }
+
+    /**
+     * The do-nothing unit of work, used to republish after a tab switch.
+     *
+     * <p>A named constant so it can be told apart by identity: showing a sheet must not mark it
+     * modified, and every other path through {@code onMachine} must.
+     */
+    private static final Consumer<Machine> IDLE = m -> {};
 
     /**
      * Note that a machine call has started, and show the indicator if it takes long enough to matter.
@@ -1283,7 +1369,7 @@ public final class CalcWindow {
     }
 
     private void publish(CalcState snapshot, List<TrailEntry> trail) {
-        markDirty();
+        shownModes = snapshot.modes();
         stack.setAll(snapshot.stack());
         trailLines.setAll(trail);
         if (!trailLines.isEmpty()) {
@@ -1911,29 +1997,55 @@ public final class CalcWindow {
         }
     }
 
-    /** Whether it is safe to close: asks about unsaved work, and answers what the user chose. */
+    /**
+     * Whether it is safe to close: asks about every sheet with unsaved work.
+     *
+     * <p>Every one, not just the visible one. A tab someone stopped looking at an hour ago is exactly
+     * the sheet they will be most annoyed to lose, and it is the one a single prompt would skip.
+     */
     public boolean confirmClose() {
-        return confirmDiscard("quitting");
+        for (Document doc : List.copyOf(documents)) {
+            if (!confirmDiscard(doc, "quitting")) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // ---------------------------------------------------------------- files
 
-    /** The sheet as it stands, ready to write. Must be read on the worker: it reads the machine. */
-    private Sheet currentSheet() {
-        return Sheet.of(machine.state(), List.copyOf(machine.trail()));
+    private Document newDocument() {
+        return new Document(
+                new Machine(Evaluator.numericThen(this::askEngine), CalcState.EMPTY.withModes(settings.modes())));
     }
 
-    private void markDirty() {
-        if (!dirty) {
-            dirty = true;
-            onSheetChanged.run();
+    private void markDirty(Document doc) {
+        if (!doc.dirty) {
+            doc.dirty = true;
+            sheetChanged();
         }
     }
 
-    private void markClean(Path file) {
-        sheetFile = file;
-        dirty = false;
+    private void markClean(Document doc, Path file) {
+        doc.file = file;
+        doc.dirty = false;
+        sheetChanged();
+    }
+
+    /** Retitle the window and redraw the strip: both show a sheet's name and whether it is saved. */
+    private void sheetChanged() {
+        renderTabs();
         onSheetChanged.run();
+    }
+
+    private void renderTabs() {
+        if (tabs != null) {
+            tabs.render(
+                    documents.stream()
+                            .map(d -> new SheetTabs.Entry(d.title(), d.dirty))
+                            .toList(),
+                    documents.indexOf(current));
+        }
     }
 
     /** Told when the sheet's name or modified state changes, so the stage can retitle. */
@@ -1942,41 +2054,107 @@ public final class CalcWindow {
     }
 
     public Path sheetFile() {
-        return sheetFile;
+        return current.file;
     }
 
     public boolean isDirty() {
-        return dirty;
+        return current.dirty;
+    }
+
+    /** Visible for tests: the strip, so what it draws can be asserted rather than described. */
+    SheetTabs tabStrip() {
+        return tabs;
+    }
+
+    /** Visible for tests: how many sheets are open. */
+    int sheetCount() {
+        return documents.size();
     }
 
     /**
-     * Start again, after asking about unsaved work.
+     * A new sheet, in a new tab.
      *
-     * <p>Clearing the machine rather than building a new one: the machine is the thing every queued
-     * operation holds a reference to, and swapping it under a worker that is mid-call is a race for
-     * no gain.
+     * <p>Never destroys anything, so there is nothing to ask about. That is the real gain from tabs:
+     * "New" and "Open" stop being questions about the work already on screen.
      */
     void newSheet() {
-        if (!confirmDiscard("starting a new sheet")) {
-            return;
-        }
-        onMachine(m -> m.reset(CalcState.EMPTY.withModes(settings.modes())), () -> markClean(null));
+        Document doc = newDocument();
+        documents.add(doc);
+        showDocument(doc);
     }
 
     void openSheet() {
-        if (!confirmDiscard("opening another sheet")) {
-            return;
-        }
-        FileChooser chooser = chooser("Open sheet", null);
+        FileChooser chooser = chooser("Open sheet", current.file);
         File chosen = chooser.showOpenDialog(stageOrNull());
         if (chosen != null) {
             openSheet(chosen.toPath());
         }
     }
 
-    /** Load a file into this window, replacing whatever was here; reports a failure in a dialog. */
+    /**
+     * Close a sheet, asking about unsaved work first.
+     *
+     * <p>Closing the last one leaves an empty sheet rather than an empty window: a calculator with no
+     * calculator in it is a state with nothing to do in it and no obvious way out.
+     */
+    void closeSheet(int index) {
+        if (index < 0 || index >= documents.size()) {
+            return;
+        }
+        Document doc = documents.get(index);
+        if (!confirmDiscard(doc, "closing it")) {
+            return;
+        }
+        documents.remove(index);
+        if (documents.isEmpty()) {
+            documents.add(newDocument());
+        }
+        showDocument(documents.get(Math.min(index, documents.size() - 1)));
+    }
+
+    void closeSheet() {
+        closeSheet(documents.indexOf(current));
+    }
+
+    void selectSheet(int index) {
+        if (index >= 0 && index < documents.size()) {
+            showDocument(documents.get(index));
+        }
+    }
+
+    /** Move by one, wrapping — so the two commands reach every sheet from any of them. */
+    void cycleSheet(int step) {
+        if (documents.size() > 1) {
+            int at = documents.indexOf(current);
+            selectSheet(Math.floorMod(at + step, documents.size()));
+        }
+    }
+
+    /**
+     * Make a sheet current and show it.
+     *
+     * <p>The republish goes through the worker like everything else, because it reads the machine.
+     * Setting {@code current} first is what makes it the new document's state that arrives.
+     */
+    private void showDocument(Document doc) {
+        current = doc;
+        sheetChanged();
+        publish(doc.shown, doc.shownTrail);
+    }
+
+    /**
+     * Open a file: in this sheet when it is untouched, in a new one otherwise.
+     *
+     * <p>The VS Code rule, and it is the right one — opening a file into the empty sheet you just
+     * started is what you meant, and opening it over work in progress never is.
+     */
     void openSheet(Path file) {
         try {
+            if (!isPristine(current)) {
+                Document doc = newDocument();
+                documents.add(doc);
+                current = doc;
+            }
             load(file);
         } catch (SheetException e) {
             // Named rather than swallowed: the message says which line, which is the whole point of a
@@ -2003,23 +2181,37 @@ public final class CalcWindow {
     /** Read and install, or throw. The stack is untouched when the read fails. */
     private void load(Path file) {
         Sheet sheet = SheetStore.read(file);
-        onMachine(m -> m.restore(sheet.state(), sheet.trail()), () -> markClean(file));
+        Document doc = current;
+        onMachine(m -> m.restore(sheet.state(), sheet.trail()), () -> markClean(doc, file));
+    }
+
+    /** An untouched, unsaved sheet: nothing here would be lost by loading over it. */
+    private boolean isPristine(Document doc) {
+        return doc.file == null && !doc.dirty;
     }
 
     /** Write to a named file. Visible for tests, which cannot answer a file chooser. */
     boolean saveTo(Path file) {
-        return writeTo(file);
+        return writeTo(current, file);
     }
 
     /** Save to the known file, or ask for one. Returns false when the user backed out. */
     boolean saveSheet() {
-        return sheetFile == null ? saveSheetAs() : writeTo(sheetFile);
+        return saveSheet(current);
+    }
+
+    private boolean saveSheet(Document doc) {
+        return doc.file == null ? saveSheetAs(doc) : writeTo(doc, doc.file);
     }
 
     boolean saveSheetAs() {
-        FileChooser chooser = chooser("Save sheet", sheetFile);
+        return saveSheetAs(current);
+    }
+
+    private boolean saveSheetAs(Document doc) {
+        FileChooser chooser = chooser("Save sheet", doc.file);
         File chosen = chooser.showSaveDialog(stageOrNull());
-        return chosen != null && writeTo(SheetStore.withExtension(chosen.toPath()));
+        return chosen != null && writeTo(doc, SheetStore.withExtension(chosen.toPath()));
     }
 
     /**
@@ -2038,13 +2230,13 @@ public final class CalcWindow {
      * <p>Deliberately NOT through {@code onMachine}: saving changes nothing, and the publish that
      * comes with it would mark the sheet modified again the instant it was written.
      */
-    private boolean writeTo(Path file) {
+    private boolean writeTo(Document doc, Path file) {
         java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.atomic.AtomicReference<String> failure =
                 new java.util.concurrent.atomic.AtomicReference<>();
         worker.execute(() -> {
             try {
-                SheetStore.write(file, Sheet.of(machine.state(), List.copyOf(machine.trail())));
+                SheetStore.write(file, Sheet.of(doc.machine.state(), List.copyOf(doc.machine.trail())));
             } catch (RuntimeException e) {
                 failure.set(describe(e));
             } finally {
@@ -2064,7 +2256,7 @@ public final class CalcWindow {
             problem("Could not save " + file.getFileName(), failure.get());
             return false;
         }
-        markClean(file);
+        markClean(doc, file);
         return true;
     }
 
@@ -2078,27 +2270,22 @@ public final class CalcWindow {
      * usually wants, and offering only "discard or cancel" makes them cancel, save by hand, and try
      * again.
      */
-    private boolean confirmDiscard(String what) {
-        if (!dirty || currentIsEmpty()) {
+    private boolean confirmDiscard(Document doc, String what) {
+        if (!doc.dirty) {
             return true;
         }
         Alert ask = new Alert(Alert.AlertType.CONFIRMATION);
         ask.setTitle("Unsaved work");
-        ask.setHeaderText("This sheet has changes that are not saved.");
+        ask.setHeaderText(doc.title() + " has changes that are not saved.");
         ask.setContentText("Save them before " + what + "?");
         ButtonType save = new ButtonType("Save");
         ButtonType discard = new ButtonType("Discard");
         ask.getButtonTypes().setAll(save, discard, ButtonType.CANCEL);
         ButtonType answer = ask.showAndWait().orElse(ButtonType.CANCEL);
         if (answer == save) {
-            return saveSheet();
+            return saveSheet(doc);
         }
         return answer == discard;
-    }
-
-    /** A cheap "is there anything here at all", so a pristine window never prompts. */
-    private boolean currentIsEmpty() {
-        return stack.isEmpty() && trailLines.isEmpty();
     }
 
     private FileChooser chooser(String title, Path near) {
@@ -2167,7 +2354,7 @@ public final class CalcWindow {
     }
 
     private void refreshModeLine() {
-        modes.setText(machine.modes().describe() + "  " + reader.label());
+        modes.setText(shownModes.describe() + "  " + reader.label());
     }
 
     private Region buildEchoArea() {
@@ -2182,19 +2369,44 @@ public final class CalcWindow {
 
     // ---------------------------------------------------------------- test seams
 
+    /**
+     * Read a view's contents from any thread.
+     *
+     * <p>These lists are the ones the FX thread mutates on every publish, so walking one from a test
+     * thread races that mutation — and the symptom is a ConcurrentModificationException in whichever
+     * test happened to be running when a background sheet finished, once in a full suite and never on
+     * its own. Marshalling here rather than at each call site makes every reader safe by construction
+     * instead of by remembering.
+     */
+    private <T> T read(java.util.function.Supplier<T> reader) {
+        if (Platform.isFxApplicationThread()) {
+            return reader.get();
+        }
+        java.util.concurrent.FutureTask<T> task = new java.util.concurrent.FutureTask<>(reader::get);
+        Platform.runLater(task);
+        try {
+            return task.get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while reading the window", e);
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException e) {
+            throw new IllegalStateException("could not read the window", e);
+        }
+    }
+
     /** Visible for tests: the stack from bottom to top. */
     public List<Expr> stackContents() {
-        return List.copyOf(stack);
+        return read(() -> List.copyOf(stack));
     }
 
     /** Visible for tests: the stack as it is displayed. */
     public List<String> stackDisplay() {
-        return stack.stream().map(Formatter::format).toList();
+        return read(() -> stack.stream().map(Formatter::format).toList());
     }
 
     /** Visible for tests: the trail as it is displayed, sigils included. */
     public List<String> trailContents() {
-        return trailLines.stream().map(CalcWindow::renderTrail).toList();
+        return read(() -> trailLines.stream().map(CalcWindow::renderTrail).toList());
     }
 
     /** Visible for tests: drive the echo area without a robot. */

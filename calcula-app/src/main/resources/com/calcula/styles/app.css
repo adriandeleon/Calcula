@@ -603,3 +603,72 @@
     -fx-font-size: 11px;
     -fx-text-fill: -color-fg-muted;
 }
+
+/* ---- sheet tabs ---------------------------------------------------------
+ * Only drawn when there is more than one sheet; the single-sheet case has no
+ * strip at all, so the common window looks exactly as it did before tabs.
+ */
+.sheet-tabs {
+    -fx-padding: 4 6 0 6;
+    -fx-spacing: 4;
+    -fx-background-color: -color-bg-default;
+}
+
+.sheet-tab {
+    -fx-padding: 4 8 4 10;
+    -fx-background-radius: 6 6 0 0;
+    -fx-background-color: -color-bg-subtle;
+    -fx-cursor: hand;
+}
+
+.sheet-tab:hover {
+    -fx-background-color: -color-bg-inset;
+}
+
+.sheet-tab.selected {
+    -fx-background-color: -color-bg-inset;
+    -fx-border-color: -color-accent-emphasis transparent transparent transparent;
+    -fx-border-width: 2 0 0 0;
+}
+
+.sheet-tab-name {
+    -fx-font-family: "Inter";
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-muted;
+}
+
+.sheet-tab.selected .sheet-tab-name {
+    -fx-text-fill: -color-fg-default;
+}
+
+/* The unsaved marker, in the same amber the rest of the application uses for
+ * "there is work here that is not written down yet". */
+.sheet-tab.dirty .sheet-tab-name {
+    -fx-text-fill: -color-warning-fg;
+}
+
+.sheet-tab-close {
+    -fx-font-family: "Inter";
+    -fx-font-size: 12px;
+    -fx-text-fill: -color-fg-muted;
+    -fx-opacity: 0.45;
+    -fx-padding: 0 2 0 2;
+}
+
+.sheet-tab-close:hover {
+    -fx-opacity: 1;
+    -fx-text-fill: -color-danger-fg;
+}
+
+.sheet-tab-new {
+    -fx-font-family: "Inter";
+    -fx-font-size: 13px;
+    -fx-text-fill: -color-fg-muted;
+    -fx-background-color: transparent;
+    -fx-padding: 4 10 4 10;
+}
+
+.sheet-tab-new:hover {
+    -fx-background-color: -color-bg-subtle;
+    -fx-text-fill: -color-fg-default;
+}

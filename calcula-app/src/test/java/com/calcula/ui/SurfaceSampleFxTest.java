@@ -105,6 +105,38 @@ class SurfaceSampleFxTest {
     }
 
     @Test
+    void theTabStripRenders() throws Exception {
+        // Three sheets, one of them unsaved: whether a tab reads as selected, as modified, or as
+        // neither is a question only a picture answers.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        Region root = window.getRoot();
+        FxTestSupport.runOnFx(() -> {
+            Scene scene = new Scene(root, 980, 660);
+            Themes.apply(scene, Themes.byName(window.settings().themeId()));
+            root.applyCss();
+            root.layout();
+            window.submit("integrate(x*sin(x), x)");
+        });
+        FxTestSupport.waitFor("the entry", 5000, () -> !window.stackContents().isEmpty());
+        FxTestSupport.runOnFx(() -> {
+            window.newSheet();
+            window.newSheet();
+            window.submit("1/3 + 1/6");
+        });
+        FxTestSupport.waitFor(
+                "the third sheet", 5000, () -> !window.stackContents().isEmpty());
+        FxTestSupport.runOnFx(() -> {
+            root.applyCss();
+            root.layout();
+        });
+        WritableImage image = FxTestSupport.callOnFx(() -> root.snapshot(new SnapshotParameters(), null));
+        javax.imageio.ImageIO.write(
+                javafx.embed.swing.SwingFXUtils.fromFXImage(image, null), "png", new File("target/tabs-sample.png"));
+        System.out.println("WROTE target/tabs-sample.png");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
     void theExampleSheetRenders() throws Exception {
         snapshot("examples-sample.png", "help.examples");
     }
