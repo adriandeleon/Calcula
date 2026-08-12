@@ -194,4 +194,38 @@ class StackRowHeightFxTest {
 
         FxTestSupport.runOnFx(window::dispose);
     }
+
+    /**
+     * A plot uses the column it is given, within reason.
+     *
+     * <p>Its 360px was a floor being used as a size: measured in a 704px column it left half of it
+     * empty, and on a maximised window it was a fifth. PlotCanvas could always grow — its
+     * layoutChildren resizes the canvas, re-fits the viewport and redraws — it was pinned at its
+     * preferred width and never asked to. Capped, because a plot is one value among several rather
+     * than the subject of the window.
+     */
+    @Test
+    void aPlotUsesTheColumnButDoesNotTakeItOver() throws Exception {
+        CalcWindow window = open();
+        FxTestSupport.runOnFx(() -> window.submit("1/(x - 1)"));
+        FxTestSupport.waitFor("the formula", 5000, () -> window.stackContents().size() == 1);
+        FxTestSupport.runOnFx(() -> window.run("plot.function"));
+        FxTestSupport.waitFor("the plot", 5000, () -> window.stackContents().size() == 2);
+        relayout(window);
+
+        double[] measured = FxTestSupport.callOnFx(() -> {
+            Region stack = (Region) window.getRoot().lookup(".stack-view");
+            Node plot = window.getRoot().lookup(".plot-canvas");
+            return new double[] {plot.getBoundsInLocal().getWidth(), stack.getWidth()};
+        });
+        double plotWidth = measured[0];
+        double columnWidth = measured[1];
+
+        assertTrue(
+                plotWidth > 360,
+                "the plot should use the room it has, but stayed at its floor: " + plotWidth + "px in a " + columnWidth
+                        + "px column");
+        assertTrue(plotWidth <= 720, "and not grow without limit: " + plotWidth + "px");
+        FxTestSupport.runOnFx(window::dispose);
+    }
 }

@@ -124,6 +124,20 @@ public final class CalcWindow {
     private static final double STACK_PLOT_HEIGHT = 200;
 
     /**
+     * How wide a plot may grow when the column has room to spare.
+     *
+     * <p>{@link #STACK_PLOT_WIDTH} is the floor, not the size: measured in a 704px column, a plot used
+     * 360 of it and left the other half empty, and on a maximised window it is a fifth. PlotCanvas has
+     * always been able to grow — its layoutChildren resizes the canvas, re-fits the viewport and
+     * redraws — it was simply pinned at its preferred width and never asked to.
+     *
+     * <p>Capped rather than unbounded, because a plot is one value among several on a stack rather
+     * than the subject of the window. Left to fill a wide screen it would tower over the numbers above
+     * it, which is a different mistake from the one being fixed.
+     */
+    private static final double STACK_PLOT_MAX_WIDTH = 720;
+
+    /**
      * Space between the stack's gutter rail and the entry number.
      *
      * <p>The cell's own left padding is zero so the rail can sit flush against the edge, so this is
@@ -1577,6 +1591,14 @@ public final class CalcWindow {
                 // number on, dropping "3:" to the foot of the plot. Faking a baseline on the canvas
                 // would be answering the wrong question: a picture genuinely has none, and a block is
                 // labelled at its top. So the alignment is chosen by what the row holds.
+                if (picture) {
+                    // Only a picture grows. A formula is set at its natural width and stretching it
+                    // would put air inside the mathematics, which is exactly what the spacing rules
+                    // in MathLayout exist to control.
+                    HBox.setHgrow(content, Priority.ALWAYS);
+                    content.setMaxWidth(STACK_PLOT_MAX_WIDTH);
+                }
+
                 HBox formula = new HBox(10, index, content);
                 formula.setAlignment(picture ? Pos.TOP_LEFT : Pos.BASELINE_LEFT);
                 HBox.setHgrow(formula, Priority.ALWAYS);
