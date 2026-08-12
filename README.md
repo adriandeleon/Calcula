@@ -382,6 +382,21 @@ own sake. New always opens a tab and so destroys nothing; Open loads into the cu
 sheet when it is untouched and into a new one otherwise; quitting asks about every sheet
 with unsaved work, not just the visible one.
 
+### The window remembers how it was left
+
+The divider was set once at construction and written down nowhere, so dragging it and restarting put
+it back at 0.28 — and there was no way to close the trail at all, in an application otherwise shaped
+like Emacs, where `C-x 1` is the gesture someone reaches for the moment the mathematics gets tall.
+
+`view.trail` (`C-x 1`) closes and reopens it; the width and the open/closed state are separate keys,
+because closing something should not forget the size it had. A closed trail leaves the split
+entirely rather than being driven to a zero-width divider — a divider at zero is still there to be
+grabbed, and a column of pure border is a worse answer than no column.
+
+Schema 3, and the migration is that there is nothing to migrate: an added scalar reads as its
+default, so a file from the previous build opens the trail at its usual width. A test writes a
+schema-2 file by hand and says so.
+
 ### Still open
 
 **Which input model is the default.** Deliberately undecided. Both readers work,

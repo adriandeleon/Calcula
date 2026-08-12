@@ -167,6 +167,21 @@ public final class CalcWindow {
     /** Transient interface feedback. See {@link #flash}. */
     private final Label echoNote = new Label();
 
+    /** The trail column, held so it can be taken out of the split and put back. */
+    private VBox trailPane;
+
+    /** The split the trail and the stack share, held so its divider can be set and remembered. */
+    private SplitPane split;
+
+    /**
+     * Suppresses the divider listener while the divider is being set in code.
+     *
+     * <p>Applying a remembered position moves the divider, which fires the same listener that saves
+     * it — so without this, restoring a layout writes it straight back, and worse, the value written
+     * is whatever the divider settled at before layout rather than what was asked for.
+     */
+    private boolean settingDivider;
+
     /** The typeset reading of the line being typed. See {@link #buildPreview}. */
     private final HBox previewHost = new HBox();
 
@@ -370,11 +385,11 @@ public final class CalcWindow {
         tabs = new SheetTabs(this::selectSheet, this::closeSheet, this::newSheet);
         renderTabs();
 
-        VBox trailPane = new VBox(buildTrailBar(), trailView);
+        trailPane = new VBox(buildTrailBar(), trailView);
         VBox.setVgrow(trailView, Priority.ALWAYS);
-        SplitPane split = new SplitPane(trailPane, stackView);
-        split.setDividerPositions(0.28);
+        split = new SplitPane(trailPane, stackView);
         SplitPane.setResizableWithParent(trailPane, Boolean.FALSE);
+        applyTrailLayout();
 
         // The strip sits above both panes rather than over the stack alone: a sheet is the trail and
         // the stack together, so a tab that spanned only half of it would be saying something false.
@@ -530,6 +545,7 @@ public final class CalcWindow {
         registry.register("stack.swap", "Swap", "Exchange the top two values", () -> machineOp(new Op.Swap()));
         registry.register("stack.roll", "Roll", "Rotate the top three values", () -> machineOp(new Op.Roll(3)));
         registry.register("stack.clear", "Clear", "Empty the stack", () -> machineOp(new Op.Clear()));
+        registry.register("view.trail", "Trail", "Show or hide the trail column", this::toggleTrail);
         registry.register(
                 "stack.evaluate", "Evaluate", "Re-evaluate the top value", () -> machineOp(new Op.Evaluate()));
         registry.register(
@@ -1010,6 +1026,7 @@ public final class CalcWindow {
         keymap.bind("C-x k", "stack.clear");
         keymap.bind("C-x e", "stack.evaluate");
         keymap.bind("C-x d", "stack.dup");
+        keymap.bind("C-x 1", "view.trail");
         keymap.bind("M-i", "input.toggleModel");
         keymap.bind("M-p", "plot.function");
         // Both spellings: Chords emits Cmd- on macOS and C- elsewhere.
@@ -2063,6 +2080,17 @@ public final class CalcWindow {
     }
 
     /** Hold the new preferences now, write them when the presses stop. */
+    /**
+     * Save at once.
+     *
+     * <p>{@link #saveLater} is right for a value being nudged repeatedly; a layout toggle is one
+     * decision, and debouncing it means quitting straight afterwards throws it away.
+     */
+    private void saveNow(Settings updated) {
+        settings = updated;
+        settingsStore.save(settings);
+    }
+
     private void saveLater(Settings updated) {
         settings = updated;
         sizeSave.setOnFinished(e -> settingsStore.save(settings));
@@ -2542,6 +2570,64 @@ public final class CalcWindow {
      *
      * <p>Hidden and unmanaged when there is nothing to say, so a blank line costs no height.
      */
+    /**
+     * Put the trail where it was left.
+     *
+     * <p>A closed trail is removed from the split rather than driven to a zero-width divider: a
+     * divider at zero is still there to be grabbed, and a column of pure border is a worse answer than
+     * no column.
+     *
+     * <p>The position is set in a {@code runLater} because a SplitPane settles a divider on a layout
+     * pass — set before one, the value is quietly replaced by whatever the panes' preferred widths
+     * work out to, which is how a remembered 0.45 comes back as 0.28.
+     */
+    private void applyTrailLayout() {
+        settingDivider = true;
+        if (settings.trailShown()) {
+            if (!split.getItems().contains(trailPane)) {
+                split.getItems().setAll(trailPane, stackView);
+            }
+            Platform.runLater(() -> {
+                split.setDividerPositions(settings.trailSplit());
+                settingDivider = false;
+                watchDivider();
+            });
+        } else {
+            split.getItems().setAll(stackView);
+            settingDivider = false;
+        }
+    }
+
+    /** Remember where the divider is dragged to, on the same debounce the sizes use. */
+    private void watchDivider() {
+        if (split.getDividers().isEmpty() || dividerWatched) {
+            return;
+        }
+        dividerWatched = true;
+        split.getDividers().get(0).positionProperty().addListener((o, was, now) -> {
+            if (!settingDivider && settings.trailShown()) {
+                saveLater(settings.withTrailSplit(now.doubleValue()));
+            }
+        });
+    }
+
+    private boolean dividerWatched;
+
+    /**
+     * Show or hide the trail.
+     *
+     * <p>{@code C-x 1} because that is the gesture someone reaches for the moment the mathematics gets
+     * tall, in an application shaped like Emacs — and because a window whose proportions are a
+     * constant fits one kind of work.
+     */
+    private void toggleTrail() {
+        boolean showing = !settings.trailShown();
+        saveNow(settings.withTrailShown(showing));
+        dividerWatched = false;
+        applyTrailLayout();
+        flash(showing ? "trail shown" : "trail hidden");
+    }
+
     private Region buildPreview() {
         previewHost.getStyleClass().add("input-preview");
         previewHost.setAlignment(Pos.CENTER_LEFT);
