@@ -48,9 +48,14 @@
     -fx-border-width: 0;
 }
 
+/*
+ * The vertical padding is NOT set here — CalcWindow sets it inline, because it has to follow the
+ * maths size and CSS cannot express a fraction of the font. What is left here is the value it falls
+ * back to before the first one is applied.
+ */
 .stack-view .list-cell {
     -fx-background-color: transparent;
-    -fx-padding: 3 12 3 0;
+    -fx-padding: 6 12 6 0;
 }
 
 .stack-view .list-cell:selected {

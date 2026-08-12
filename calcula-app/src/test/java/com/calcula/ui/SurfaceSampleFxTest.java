@@ -105,6 +105,35 @@ class SurfaceSampleFxTest {
     }
 
     @Test
+    void theStackBreathes() throws Exception {
+        // A fraction beside a long integer is the case that shows it: the fraction is a tall node, so
+        // a fixed few pixels of padding leaves its denominator all but touching the entry below.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        Region root = window.getRoot();
+        FxTestSupport.runOnFx(() -> {
+            Scene scene = new Scene(root, 980, 520);
+            Themes.apply(scene, Themes.byName(window.settings().themeId()));
+            root.applyCss();
+            root.layout();
+            window.submit("1/3 + 1/6");
+        });
+        FxTestSupport.waitFor("the first", 5000, () -> !window.stackContents().isEmpty());
+        FxTestSupport.runOnFx(() -> window.submit("2^128"));
+        FxTestSupport.waitFor("the second", 5000, () -> window.stackContents().size() >= 2);
+        FxTestSupport.runOnFx(() -> window.submit("N(pi, 40)"));
+        FxTestSupport.waitFor("the third", 5000, () -> window.stackContents().size() >= 3);
+        FxTestSupport.runOnFx(() -> {
+            root.applyCss();
+            root.layout();
+        });
+        WritableImage image = FxTestSupport.callOnFx(() -> root.snapshot(new SnapshotParameters(), null));
+        javax.imageio.ImageIO.write(
+                javafx.embed.swing.SwingFXUtils.fromFXImage(image, null), "png", new File("target/stack-sample.png"));
+        System.out.println("WROTE target/stack-sample.png");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
     void everyGlyphRenders() throws Exception {
         // A sheet of all of them at size. IconsFxTest proves each PARSES; only a picture says whether
         // scissors read as scissors at sixteen units across.

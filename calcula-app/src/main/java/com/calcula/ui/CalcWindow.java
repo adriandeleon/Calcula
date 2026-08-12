@@ -297,6 +297,7 @@ public final class CalcWindow {
     public CalcWindow() {
         settings = settingsStore.load();
         mathSize = settings.mathSize();
+        applyStackPadding();
         applyTrailSize(settings.trailSize());
         reader = settings.isRpn() ? new RpnReader() : new AlgebraicReader();
         // The saved modes are where a NEW session starts. They are seeded into the machine's initial
@@ -395,6 +396,7 @@ public final class CalcWindow {
         onThemeChanged.accept(Themes.byName(updated.themeId()));
         if (updated.mathSize() != mathSize) {
             mathSize = updated.mathSize();
+            applyStackPadding();
             stackView.refresh();
         }
         if (updated.trailSize() != trailSize) {
@@ -1547,6 +1549,7 @@ public final class CalcWindow {
                 row.setFillHeight(true);
                 HBox.setHgrow(gutter, Priority.NEVER); // a fixed rail, not a flexible column
                 setGraphic(row);
+                setStyle(stackCellPadding);
                 setText(null);
                 // Built per right-click rather than once per cell: cells are RECYCLED, so a menu
                 // captured at construction would act on whatever value the cell showed first.
@@ -1932,8 +1935,53 @@ public final class CalcWindow {
      */
     private String zoomLimitSaid;
 
+    /**
+     * The space above and below a stack entry, as a style string.
+     *
+     * <p>Kept here rather than in the stylesheet because it has to follow the maths size, and CSS
+     * cannot express "a fraction of the font". A fixed 3px looked deliberate at the default size and
+     * cramped the moment anything grew — a fraction's denominator ended up all but touching the
+     * entry below it, and the whole stack read as one block of digits rather than as a list of
+     * answers.
+     *
+     * <p>Proportional rather than fixed, so zooming the stack moves the entries apart at the same
+     * rate as the type. The floor matters at the small end, where a proportion alone rounds to
+     * nothing.
+     */
+    private String stackCellPadding = "";
+
+    private void applyStackPadding() {
+        int gap = stackGap(mathSize);
+        stackCellPadding = "-fx-padding: " + gap + "px 12px " + gap + "px 0;";
+    }
+
+    /**
+     * The space above and below one entry, in pixels, for a given type size.
+     *
+     * <p>Pure and separate so the proportion is a thing that can be asserted. It is exactly the kind
+     * of value that gets quietly replaced by a constant during some later tidy-up, and the symptom —
+     * a stack that looks right at the default size and cramped at every other — is one nobody sees
+     * until they zoom.
+     */
+    static int stackGap(double mathSize) {
+        return (int) Math.max(MIN_STACK_GAP, Math.round(mathSize * STACK_GAP_RATIO));
+    }
+
+    /**
+     * Seven tenths of the type size.
+     *
+     * <p>Arrived at by looking, and the case that decides it is a fraction above a long integer: a
+     * fraction is a TALL node whose denominator sits well below the baseline, so a gap that looks
+     * generous under a plain number leaves that denominator all but touching the entry beneath it,
+     * and the stack reads as one block of digits rather than as a list of answers.
+     */
+    private static final double STACK_GAP_RATIO = 0.7;
+
+    private static final int MIN_STACK_GAP = 4;
+
     private void applyMathSize(double size) {
         mathSize = size;
+        applyStackPadding();
         stackView.refresh();
         saveLater(settings.withMathSize(size));
     }
