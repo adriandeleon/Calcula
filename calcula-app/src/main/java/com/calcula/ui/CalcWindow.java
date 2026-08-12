@@ -320,7 +320,12 @@ public final class CalcWindow {
             engineStatus.getStyleClass().add(loaded.available() ? "cas-ok" : "cas-missing");
             // "unavailable" on its own is a symptom, not a diagnosis. Put the reason where someone
             // looking at the words "CAS: unavailable" will actually find it.
-            engineStatus.setTooltip(loaded.diagnostic().isBlank() ? null : new Tooltip(loaded.diagnostic()));
+            // Was set only on failure, so a working engine was an unexplained label. Now it always
+            // says what the segment IS; the diagnosis is added when there is one.
+            engineStatus.setTooltip(new Tooltip(
+                    loaded.diagnostic().isBlank()
+                            ? "The computer algebra engine. Exact arithmetic works without it."
+                            : loaded.diagnostic()));
         });
         if (!loaded.available() && !loaded.diagnostic().isBlank()) {
             onMachine(m -> m.record(new TrailEntry(TrailEntry.Kind.NOTE, "no CAS: " + loaded.diagnostic())));
@@ -1189,7 +1194,8 @@ public final class CalcWindow {
                 example("1/2 + 1/3"),
                 example("integrate(x*sin(x), x)"),
                 example("solve(x^2 = 4, x)"),
-                new Label("M-x lists every command.  Tab completes a function name."));
+                new Label("M-x lists every command.  Tab completes a function name."),
+                new Label("Click part of a result to select it; right-click it to transform it."));
         hint.getStyleClass().add("stack-empty");
         return hint;
     }
@@ -1474,9 +1480,29 @@ public final class CalcWindow {
         });
     }
 
+    /**
+     * A chrome button: an outline glyph, and a tooltip that names the action AND its chord.
+     *
+     * <p>The chord is the point. These are the only buttons in the application, and they exist to say
+     * that a thing EXISTS — not to become the way to reach it. Someone who uses one repeatedly is
+     * being told, every time, the key that would have been quicker.
+     */
+    private javafx.scene.control.Button chromeButton(String glyph, String commandId, String description) {
+        javafx.scene.control.Button button = new javafx.scene.control.Button();
+        button.setGraphic(Icons.of(glyph));
+        button.getStyleClass().add("chrome-button");
+        button.setFocusTraversable(false); // Tab belongs to the input line
+        String chord = chordFor(commandId);
+        button.setTooltip(new Tooltip(chord.isBlank() ? description : description + "   (" + chord + ")"));
+        button.setOnAction(e -> runCommand(commandId));
+        return button;
+    }
+
     private Region buildModeLine() {
         modes.getStyleClass().add("mode-item");
         engineStatus.getStyleClass().add("mode-item");
+        // The mode line already reports state nobody was told was clickable.
+        modes.setTooltip(new Tooltip("The current session's modes. Change them with M-m, or from the Mode menu."));
         busy.getStyleClass().addAll("mode-item", "mode-busy");
         busy.setVisible(false);
         // Unmanaged, so appearing and vanishing cannot shift the mode line around it — a status that
@@ -1489,7 +1515,16 @@ public final class CalcWindow {
         StackPane busySlot = new StackPane(busy);
         busySlot.setMinWidth(70);
         busySlot.setPrefWidth(70);
-        HBox bar = new HBox(modes, spacer, busySlot, engineStatus);
+        HBox chrome = new HBox(
+                chromeButton("palette", "app.palette", "Every command, searchable"),
+                chromeButton("functions", "help.functions", "Every function, with what it does"),
+                chromeButton("settings", "app.settings", "Settings"),
+                chromeButton("about", "help.about", "About Calcula"));
+        chrome.getStyleClass().add("chrome-bar");
+        chrome.setAlignment(Pos.CENTER);
+
+        HBox bar = new HBox(modes, spacer, busySlot, engineStatus, chrome);
+        bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("mode-line");
         return bar;
     }

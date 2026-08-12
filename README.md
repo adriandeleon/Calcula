@@ -3,8 +3,9 @@
 A keyboard-driven symbolic calculator in the spirit of Emacs Calc. JDK 25 + JavaFX 26, Maven, modular
 (JPMS, module `com.calcula`).
 
-The stack is a document, not a display: trail, stack, mode line, echo area, and no buttons anywhere.
-Input is keystrokes with prefix dispatch.
+The stack is a document, not a display: trail, stack, mode line, echo area. Input is keystrokes with
+prefix dispatch; the only buttons are four chrome glyphs in the mode line, and each names its own
+chord in its tooltip.
 
 ## Commands
 
@@ -253,6 +254,24 @@ supported and which one someone wants is not something the program can know.
 `mvn test -Dtest=SurfaceSampleFxTest` writes `palette-sample.png` and `settings-sample.png` to look
 at. Worth doing: rendering these caught right-aligned section headings and a list clipped mid-row
 while 340 structural tests stayed green.
+
+### Saying what is there
+
+Four outline glyphs sit at the right of the mode line — palette, function reference, settings, about
+— and every one of them shows its **chord** in its tooltip. That is what makes them allowable in a
+keyboard-driven application: they say a thing EXISTS, and tell you the key that reaches it faster.
+Everything a calculator actually does stays on the keyboard, the palette and the menu.
+
+`ui.Icons` follows the same rules as Dicta's set: a 16-unit grid, **stroked rather than filled** so a
+glyph tracks the palette and its button's state through `-fx-stroke` with no per-icon colour in Java,
+and path data written longhand. JavaFX's `SVGPath` parser is stricter than a browser's and **fails
+silently** — a compacted elliptical arc with its flags run together renders nothing at all — so every
+arc spaces its flags and a test asserts each glyph parses to a non-empty shape that fits the grid,
+because nothing else would say so.
+
+The mode line's own segments were reporting state nobody had been told was meaningful, so the modes
+and the CAS status now carry tooltips explaining what they are. The CAS one used to appear only when
+the engine had FAILED, which left a working engine as an unexplained label.
 
 ### Fonts
 
