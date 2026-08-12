@@ -1443,11 +1443,22 @@ public final class CalcWindow {
      * carrying its kind as data — which is what lets {@link #trailCellClass} colour it.
      */
     private static String renderTrail(TrailEntry entry) {
+        return trailSigil(entry) + entry.text();
+    }
+
+    /**
+     * The mark in front of a trail line, padded to one column.
+     *
+     * <p>Split out from the text so the cell can put it in its own box and wrap the rest under it.
+     * {@link #renderTrail} rebuilds the whole line from this, so the string a test reads and the two
+     * boxes the eye reads cannot drift apart.
+     */
+    private static String trailSigil(TrailEntry entry) {
         return switch (entry.kind()) {
-            case INPUT -> entry.text();
-            case RESULT -> "  = " + entry.text();
-            case ERROR -> "  ! " + entry.text();
-            case NOTE -> "  · " + entry.text();
+            case INPUT -> "";
+            case RESULT -> "  = ";
+            case ERROR -> "  ! ";
+            case NOTE -> "  · ";
         };
     }
 
@@ -1926,11 +1937,11 @@ public final class CalcWindow {
      * <p>One helper for both surfaces: the arithmetic and the "already at the limit" case are the same
      * whichever size is being nudged, and the only thing that differs is where the value lands.
      *
-     * <p><b>Silent when it works.</b> The text changing size IS the feedback, and the only channel for
-     * a message here is the trail — which is the log of the calculation, not of the window. Two presses
-     * of a zoom button put two lines of "Trail text 13 point" in among the results, which is noise in
-     * the one place that should be nothing but arithmetic. Reaching the limit is different: nothing
-     * happens on screen, so the press needs an answer.
+     * <p><b>Silent when it works.</b> The text changing size IS the feedback. Two presses of a zoom
+     * button putting two lines of "Trail text 13 point" in among the results would be noise in the one
+     * place that should be nothing but arithmetic. Reaching the limit is different: nothing happens on
+     * screen, so the press needs an answer — and it now goes to the echo area rather than the trail,
+     * which is the channel this comment used to say did not exist. See {@link #flash}.
      */
     private void zoom(
             String what, double current, double step, double min, double max, java.util.function.DoubleConsumer apply) {
@@ -2049,9 +2060,28 @@ public final class CalcWindow {
                 getStyleClass().removeAll("trail-input", "trail-result", "trail-error", "trail-note");
                 if (empty || entry == null) {
                     setText(null);
+                    setGraphic(null);
                     return;
                 }
-                setText(renderTrail(entry));
+                // Sigil and text as two boxes rather than one string, which is what buys the HANGING
+                // indent: a wrapped line resumes under the text and not under the "= ", so the sigil
+                // column the trail is set in monospace FOR survives being wrapped.
+                Label sigil = new Label(trailSigil(entry));
+                sigil.getStyleClass().add("trail-sigil");
+                sigil.setMinWidth(Region.USE_PREF_SIZE);
+
+                Label said = new Label(entry.text());
+                said.setWrapText(true);
+                HBox.setHgrow(said, Priority.ALWAYS);
+
+                HBox line = new HBox(sigil, said);
+                setText(null);
+                setGraphic(line);
+                // Without this the cell asks for the width of its longest line and the list grows a
+                // horizontal scrollbar instead of wrapping — which is what it did: FactorInteger's
+                // result was cut off mid-token at "[65". A cell that requests nothing takes the width
+                // it is given, and the label wraps inside it.
+                setPrefWidth(0);
                 setStyle(trailCellStyle);
                 getStyleClass().add(trailCellClass(entry));
                 setOnContextMenuRequested(e -> {

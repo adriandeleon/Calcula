@@ -721,3 +721,12 @@
     -fx-font-size: 11px;
     -fx-text-fill: -color-danger-fg;
 }
+
+/*
+ * The mark in front of a trail line, in its own column so a wrapped line resumes under the TEXT
+ * rather than under the sigil. Inherits the cell's face and colour; it is the same line, set in two
+ * boxes.
+ */
+.trail-sigil {
+    -fx-text-fill: inherit;
+}

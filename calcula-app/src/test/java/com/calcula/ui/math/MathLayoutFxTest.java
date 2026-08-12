@@ -247,4 +247,37 @@ class MathLayoutFxTest {
         // And its parent chain reaches the numerator, not just the whole quotient.
         assertEquals(Parser.parse("a + b"), MathLayout.exprAt(a.getParent()));
     }
+
+    /** Does anything in this rendering use the matrix grid? */
+    private static boolean setAsAMatrix(Region rendered) {
+        List<Node> all = new ArrayList<>();
+        collect(rendered, all);
+        return all.stream().anyMatch(n -> n instanceof MatrixNode);
+    }
+
+    @Test
+    void aGridOfNumbersIsSetAsAMatrix() throws Exception {
+        assertTrue(setAsAMatrix(laidOut("[[1, 2], [3, 4]]")), "a matrix should be set as one");
+    }
+
+    /**
+     * Matrix fences are a claim, and a set of solutions is not linear algebra. solve returns
+     * [[x -> 2], [x -> 3]], which is a list of lists and so passes Exprs.isMatrix -- it was being
+     * drawn inside matrix brackets, leaving the reader to notice that a "matrix" whose entries are
+     * arrows cannot be one.
+     */
+    @Test
+    void aSetOfSolutionsIsNot() throws Exception {
+        assertFalse(setAsAMatrix(laidOut("[[x -> 2], [x -> 3]]")), "solutions are not a matrix");
+    }
+
+    /**
+     * The limit of what shape alone can tell you, pinned so it is a decision and not a gap.
+     * FactorInteger returns pairs too, and [[3, 1], [5, 1]] is genuinely indistinguishable from a 2x2
+     * integer matrix without knowing what produced it. Guessing would mis-set real matrices.
+     */
+    @Test
+    void aGridOfPairsIsStillAMatrixBecauseNothingSaysOtherwise() throws Exception {
+        assertTrue(setAsAMatrix(laidOut("[[3, 1], [5, 1]]")), "left alone deliberately");
+    }
 }
