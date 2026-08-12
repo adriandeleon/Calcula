@@ -396,7 +396,14 @@ public final class CalcWindow {
         VBox centre = new VBox(tabs.node(), split);
         VBox.setVgrow(split, Priority.ALWAYS);
         root.setCenter(centre);
-        root.setBottom(new VBox(buildModeLine(), buildPreview(), buildEchoArea()));
+        // Preview, then the line it is a reading of, then the status strip at the frame edge.
+        //
+        // The mode line used to sit BETWEEN the stack and the input, which is where Emacs puts it —
+        // a window's mode line with the echo area below it at the bottom of the frame. Faithful, and
+        // it separated the one pair of regions that form a single conversation: entry 1: and the line
+        // being typed into it. Everything else in the window puts status at the edge, and so does
+        // every editor anyone comes here from.
+        root.setBottom(new VBox(buildPreview(), buildEchoArea(), buildModeLine()));
         root.getStyleClass().add("calc-root");
 
         input.addEventFilter(KeyEvent.KEY_PRESSED, this::onKey);

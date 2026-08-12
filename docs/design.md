@@ -169,12 +169,19 @@ agree character for character.
 |---|---|---|---|
 | **Trail** | JetBrains Mono 11 | 1 / 10 padding | Closeable with `C-x 1`, and its width is remembered. Sigil and text in separate boxes, so `=` and `!` keep a column *and* a wrapped line resumes under the text. Scrolls to the tail on every publish. 28 % of the split, not resizable with the parent. |
 | **Stack** | `MathLayout`, 17 pt | 3 px rail + 8 px gap, 38 px index, 10 px gap | Bottom-aligned, so entry `1:` sits against the echo area. Two nested boxes: the rail fills height, and a formula aligns on its baseline while a *picture* aligns to its top — a chart has no baseline, and a block is labelled at its top. Renumbers whole-list on any change. |
-| **Mode line** | Inter 11 | 4 / 12 padding, hairline both edges | Modes left, CAS right. An *off* flag is omitted, not greyed — Calc's own convention, and it keeps the strip short. |
+| **Mode line** | Inter 11 | 4 / 12 padding, hairline on top | At the bottom edge of the frame. Modes left, CAS right. An *off* flag is omitted, not greyed — Calc's own convention, and it keeps the strip short. |
 | **Echo area** | JetBrains Mono 14 | 8 / 12 / 10 padding | No border, no focus ring, transparent ground: a line of the page, not a widget on it. Carries transient notes at its right-hand end — what the *interface* just did, as against what happened to the mathematics. |
 | **Preview** | `MathLayout`, follows the stack | 4 / 12 / 0 / 26 padding | The line being typed, set as mathematics directly above it. Parses, never evaluates. Unmanaged when quiet, so a blank line costs no height. |
 
 The preview is a fifth region only in the sense that it occupies its own strip; it is part of the
 echo area's job, which is the line you are working on rather than the record of what you have done.
+
+**The strip is at the bottom, and that is a departure.** Emacs puts a window's mode line above the
+echo area, so the faithful order — the one this had — was stack, modes, input. It separated the one
+pair of regions that form a single conversation: entry `1:` and the line being typed into it, with a
+band of status between them. Emacs was the starting point rather than the specification, and status
+belongs at an edge: it is the part of the window you read when you go looking, not the part you work
+against.
 
 Densities differ on purpose. The stack is read by scanning down a column of values, so its rows are
 loose; the trail is skimmed for a landmark and then read backwards, so it is tight. Two jobs, two

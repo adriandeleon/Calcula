@@ -3,8 +3,10 @@
 A keyboard-driven symbolic calculator in the spirit of Emacs Calc. JDK 25 + JavaFX 26, Maven, modular
 (JPMS, module `com.calcula`).
 
-The stack is a document, not a display: trail, stack, mode line, echo area — plus a strip above the
-input that sets the line as mathematics while it is being typed. Input is keystrokes with
+The stack is a document, not a display: trail, stack, echo area, mode line — plus a strip above the
+input that sets the line as mathematics while it is being typed. The status strip sits at the bottom
+edge rather than above the input, so the top of the stack and the line being typed into it are
+adjacent. Input is keystrokes with
 prefix dispatch; the only buttons are four labelled toolbar entries, and each names its own chord in
 its tooltip.
 
