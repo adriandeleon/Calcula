@@ -86,8 +86,11 @@ public final class InputCompletion {
         holder.setPickOnBounds(false);
         popup.getContent().add(holder);
         popup.setAutoHide(true);
-        // Inherits the window's stylesheets, so it is themed like everything else.
-        popup.setAutoFix(true);
+        // Autofix OFF. It nudges a popup back on screen, and this one is deliberately placed hard
+        // against the bottom of the window — so autofix and our own placement disagree about where it
+        // belongs, and each correction invalidates the other's. That is a loop with a scrollbar
+        // flickering at the end of it.
+        popup.setAutoFix(false);
     }
 
     public boolean isShowing() {
@@ -126,18 +129,38 @@ public final class InputCompletion {
         }
         list.getItems().setAll(hits);
         list.getSelectionModel().select(0);
-        list.setPrefHeight(Math.min(hits.size(), MAX_ROWS) * ROW_HEIGHT + 2);
-        show();
-        // AFTER show, and it has to be: a Popup's content inherits the owner window's stylesheets only
-        // once it is shown, so measuring before that measures unstyled labels — default face instead
-        // of the mono signature — and the first popup of a session would be the one sized wrongly.
-        // Widening afterwards costs no reposition, since the popup is anchored at the field's left.
+        // The +4 is slack, not decoration. With a fixed cell size the flow shows however many whole
+        // cells fit, so a viewport a fraction of a pixel short of eight rows shows seven and a
+        // scrollbar — and that scrollbar takes width, which was the other half of the flicker.
+        list.setPrefHeight(Math.min(hits.size(), MAX_ROWS) * ROW_HEIGHT + 4);
+        // BEFORE showing. Resizing a visible popup makes it re-layout and re-place itself, and a
+        // resize that changes whether a scrollbar is needed re-triggers the same resize.
+        adoptOwnerStylesheets();
         list.setPrefWidth(widthFor(hits));
+        show();
     }
 
     public void hide() {
         candidates = List.of();
         popup.hide();
+    }
+
+    /**
+     * Give the popup's scene the owner's stylesheets.
+     *
+     * <p>A Popup inherits them when SHOWN, which is too late to measure with: the measurer's labels
+     * would carry the default face rather than the mono signature, and a width measured with the wrong
+     * fonts is confidently wrong. Copying them here means the sizing is correct on the first popup of
+     * a session, not merely on the second.
+     */
+    private void adoptOwnerStylesheets() {
+        if (input.getScene() == null || popup.getScene() == null) {
+            return;
+        }
+        List<String> owner = input.getScene().getStylesheets();
+        if (!popup.getScene().getStylesheets().equals(owner)) {
+            popup.getScene().getStylesheets().setAll(owner);
+        }
     }
 
     /**
@@ -216,7 +239,16 @@ public final class InputCompletion {
         // Above the field, because the field is at the BOTTOM of the window — a popup below it would
         // fall off the bottom of the screen, and autofix would then cover the thing being typed into.
         double height = list.getPrefHeight();
-        popup.show(input, bounds.getMinX(), bounds.getMinY() - height - 4);
+        double x = bounds.getMinX();
+        double y = bounds.getMinY() - height - 4;
+        if (popup.isShowing()) {
+            // Move it, rather than showing it again. show() on a visible Popup re-runs the whole
+            // show path, and doing that on every keystroke is a flicker at best.
+            popup.setX(x);
+            popup.setY(y);
+            return;
+        }
+        popup.show(input, x, y);
     }
 
     /**

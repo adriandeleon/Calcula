@@ -495,3 +495,18 @@
 .chrome-button:pressed .icon-line {
     -fx-stroke: -color-accent-emphasis;
 }
+
+/*
+ * No horizontal scrollbar on the completion list, ever.
+ *
+ * The popup is sized to fit its widest row, so one should never be needed — but "should never" is
+ * not a guarantee, and the failure mode is nasty: a horizontal bar takes height, which changes
+ * whether the vertical one is needed, which changes the available width, which brings the
+ * horizontal one back. That loop shows up as both scrollbars flickering continuously. Removing the
+ * bar's footprint removes the loop rather than relying on the arithmetic being exact.
+ */
+.completion-list > .virtual-flow > .scroll-bar:horizontal {
+    -fx-pref-height: 0;
+    -fx-max-height: 0;
+    -fx-opacity: 0;
+}
