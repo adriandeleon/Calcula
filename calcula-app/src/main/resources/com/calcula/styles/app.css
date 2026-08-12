@@ -22,9 +22,13 @@
  */
 
 .root {
-    -calc-math-face:  "STIX Two Text", "STIX Two Math", "Cambria Math", "Palatino", "Iowan Old Style", Georgia, serif;
-    -calc-mono-face:  "JetBrains Mono", "SF Mono", "Menlo", "Consolas", monospace;
-    -calc-chrome-face: "Inter", "SF Pro Text", "Segoe UI", "Helvetica Neue", sans-serif;
+    /* NO font-family variables here, deliberately. JavaFX's looked-up values are COLORS ONLY —
+       `-fx-font-family: -calc-mono-face` parses, resolves to nothing, and silently lays out in the
+       system face. This file declared three such faces and referenced them in six rules, none of
+       which ever took effect; the fonts are named literally at each use instead.
+
+       Inter and JetBrains Mono are BUNDLED (see ui/Fonts), so the fallbacks below are a safety net
+       rather than the plan. */
 }
 
 .calc-root {
@@ -73,7 +77,7 @@
 }
 
 .stack-index {
-    -fx-font-family: -calc-mono-face;
+    -fx-font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
     -fx-font-size: 11px;
     -fx-text-fill: -color-fg-subtle;
 }
@@ -83,7 +87,7 @@
 }
 
 .stack-value {
-    -fx-font-family: -calc-math-face;
+    -fx-font-family: "STIX Two Text", "Cambria Math", Palatino, Georgia, serif;
     -fx-font-size: 17px;
     -fx-text-fill: -color-fg-default;
 }
@@ -101,7 +105,7 @@
 
 .trail-view .list-cell {
     -fx-background-color: transparent;
-    -fx-font-family: -calc-mono-face;
+    -fx-font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
     -fx-font-size: 11px;
     -fx-text-fill: -color-fg-muted;
     -fx-padding: 1 10 1 10;
@@ -138,7 +142,7 @@
 }
 
 .mode-item {
-    -fx-font-family: -calc-chrome-face;
+    -fx-font-family: "Inter", "SF Pro Text", "Segoe UI", sans-serif;
     -fx-font-size: 11px;
     -fx-text-fill: -color-fg-subtle;
 }
@@ -164,7 +168,7 @@
 }
 
 .echo-prompt {
-    -fx-font-family: -calc-mono-face;
+    -fx-font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
     -fx-font-size: 15px;
     -fx-text-fill: -color-accent-fg;
 }
@@ -176,7 +180,7 @@
 }
 
 .echo-input {
-    -fx-font-family: -calc-mono-face;
+    -fx-font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
     -fx-font-size: 14px;
     -fx-text-fill: -color-fg-default;
     -fx-background-color: transparent;
@@ -296,7 +300,7 @@
 /* Monospaced, because a chord is read character by character and a proportional
    font makes C-x and C-l look like different lengths. */
 .palette-binding {
-    -fx-font-family: monospace;
+    -fx-font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
     -fx-text-fill: -color-accent-fg;
 }
 
@@ -366,7 +370,7 @@
 }
 
 .completion-signature {
-    -fx-font-family: monospace;
+    -fx-font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
     -fx-text-fill: -color-accent-fg;
     -fx-font-size: 0.9em;
 }
@@ -395,7 +399,7 @@
    is (0,1,0) against that rule's (0,2,0), so the examples came out muted like the prose around
    them — which is the opposite of the point, since these are the lines meant to be typed. */
 .stack-empty .stack-empty-example {
-    -fx-font-family: monospace;
+    -fx-font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
     -fx-text-fill: -color-accent-fg;
 }
 

@@ -1,0 +1,24 @@
+/*
+ * The interface face.
+ *
+ * A SCENE stylesheet rather than a rule in app.css, for two reasons that both matter:
+ *
+ *   - Dialogs and popups each live in their own Scene, and a rule in a sheet attached to one scene
+ *     does not reach another. Attaching this per scene is what makes the completion popup and the
+ *     About dialog match the window they came from.
+ *   - A scene sheet survives `setUserAgentStylesheet`, which a theme switch calls. A font set by the
+ *     user-agent sheet would be replaced along with the colours.
+ *
+ * Only the ROOT is set here. Everything that wants a different face — the mode line, monospaced
+ * chords, the typeset formulas — says so itself, and inherits this otherwise.
+ */
+
+.root {
+    -fx-font-family: "Inter";
+}
+
+/*
+ * The formulas are NOT set from here. MathLayout picks its fonts in code, from MathStyle, because a
+ * typeset formula needs the upright and italic faces chosen per glyph rather than inherited — and it
+ * uses the logical "Serif" family, which resolves on every platform without shipping a maths font.
+ */

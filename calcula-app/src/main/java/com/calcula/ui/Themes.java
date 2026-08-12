@@ -91,12 +91,19 @@ public enum Themes {
      * themes at runtime does not leave the previous palette layered underneath.
      */
     public static void apply(Scene scene, Themes theme) {
+        // BEFORE any stylesheet: a family that is not registered when the sheet naming it is parsed
+        // does not resolve, and JavaFX substitutes silently rather than complaining.
+        Fonts.load();
         Application.setUserAgentStylesheet(
                 theme.dark() ? new PrimerDark().getUserAgentStylesheet() : new PrimerLight().getUserAgentStylesheet());
 
         scene.getStylesheets().clear();
         scene.getStylesheets().add(resource(theme.sheet));
         scene.getStylesheets().add(resource("app.css"));
+        // Last, so the root face is the final word on it. It is a scene sheet rather than an app.css
+        // rule because every dialog and popup has its own Scene, and because a scene sheet survives
+        // the setUserAgentStylesheet that a theme switch performs.
+        scene.getStylesheets().add(resource("ui-font.css"));
     }
 
     private static String resource(String name) {

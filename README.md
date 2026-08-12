@@ -254,6 +254,27 @@ supported and which one someone wants is not something the program can know.
 at. Worth doing: rendering these caught right-aligned section headings and a list clipped mid-row
 while 340 structural tests stayed green.
 
+### Fonts
+
+Inter and JetBrains Mono are **bundled** (2.7 MB, both OFL-1.1, see `NOTICE`). Naming a font you
+have not shipped is a preference rather than a decision: it looks right on the machine it was chosen
+on and silently falls through to something else everywhere else.
+
+They are registered by `ui.Fonts` before any stylesheet is applied — a family that is not registered
+when the sheet naming it is parsed does not resolve, and JavaFX substitutes without complaining —
+and named by `ui-font.css`, a **scene** sheet rather than an `app.css` rule, because every dialog
+and popup has its own Scene and because a scene sheet survives the `setUserAgentStylesheet` a theme
+switch performs.
+
+**`-fx-font-family` cannot name a CSS variable.** JavaFX's looked-up values are colours only, so
+`-fx-font-family: -calc-mono-face` parses, resolves to nothing, and lays out in the system face.
+This file declared three such faces and referenced them in six rules, none of which had ever taken
+effect. Faces are named literally at each use, and a test asserts what a styled node actually lays
+out in — the only thing worth asserting, since the failure is invisible.
+
+Typeset formulas are not affected either way: `MathLayout` picks fonts in code from `MathStyle`,
+using the logical `Serif` family, which resolves everywhere without shipping a maths face.
+
 ### Finding out what exists
 
 `C-h f` opens the function reference: every callable thing, grouped, filterable by **what it does**

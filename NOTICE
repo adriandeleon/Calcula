@@ -1,33 +1,65 @@
 Calcula
-Copyright (c) 2026 Adrián Arturo De León Saldivar
-Licensed under the MIT License (see LICENSE).
+=======
 
---------------------------------------------------------------------------------
-Third-party components
---------------------------------------------------------------------------------
+Copyright (c) 2026 Adrián Arturo De León Saldivar.
+Calcula's own source is released under the MIT License; see LICENSE.
 
-Calcula itself is MIT. The computer algebra engine it loads at runtime is not, and
-is kept at arm's length for exactly that reason.
+This file records what Calcula bundles and under what terms. It is the place to
+check before a release, not a substitute for doing so — the transitive
+dependency set below is what the build resolves today, and a version bump can
+change it.
 
-Symja / matheclipse — https://github.com/axkr/symja_android_library
-    matheclipse-core, matheclipse-parser, matheclipse-external
-    GNU Lesser General Public License v3 (LGPL-3.0)
+================================================================================
+The computer algebra engine
+================================================================================
 
-JAS (Java Algebra System) — https://krum.rz.uni-mannheim.de/jas/
-    Pulled in transitively by Symja.
-    GNU Lesser General Public License
+Symja / matheclipse (matheclipse-core, matheclipse-parser, and their transitive
+dependencies, including JAS)
+    https://github.com/axkr/symja_android_library
+    License: GNU Lesser General Public License v3.0 (LGPL-3.0).
 
-These are NOT linked into the application. They ship as ordinary jars in the
-`cas/` directory beside the executable and are loaded through a URLClassLoader at
-runtime. A user may replace any of them with a modified build by dropping a
-different jar into that directory and restarting — which is how Calcula satisfies
-the LGPL's relink requirement.
+    Calcula's own code is MIT and does NOT link Symja at compile time. The
+    engine is discovered at runtime through a URLClassLoader and ships as plain,
+    replaceable jars in a `cas/` directory beside the launcher — so the LGPL's
+    relink requirement is satisfied in the simplest available form: drop in a
+    different jar and restart. See the reactor root pom.xml for why the split is
+    load-bearing rather than cosmetic.
 
-Source for the versions shipped is available from the upstream projects above.
+    The full LGPL-3.0 text is at https://www.gnu.org/licenses/lgpl-3.0.html.
 
-Also bundled:
+================================================================================
+Fonts
+================================================================================
 
-JavaFX — https://openjfx.io/            GPL v2 with the Classpath Exception
-AtlantaFX — https://github.com/mkpaz/atlantafx    MIT License
-Apfloat — https://www.apfloat.org/      MIT License (via Symja)
-Hipparchus — https://hipparchus.org/    Apache License 2.0 (via Symja)
+Bundled under `com/calcula/fonts/`, unmodified, and used as the interface and
+monospaced faces. Both are licensed under the SIL Open Font License 1.1, which
+permits bundling and redistribution within an application.
+
+    Inter          — https://github.com/rsms/inter
+                     (c) The Inter Project Authors
+    JetBrains Mono — https://github.com/JetBrains/JetBrainsMono
+                     (c) JetBrains
+
+    The full OFL 1.1 text is at https://openfontlicense.org.
+
+Typeset formulas do NOT use a bundled font: they are set in JavaFX's logical
+"Serif" family, which resolves on every platform without shipping a maths face.
+
+================================================================================
+Toolkit and interface
+================================================================================
+
+JavaFX (OpenJFX)
+    https://openjfx.io
+    License: GPL v2 with the Classpath Exception.
+
+AtlantaFX
+    https://github.com/mkpaz/atlantafx
+    Control theming. (c) 2022 mkpaz. License: MIT.
+
+================================================================================
+Build and test only — not redistributed
+================================================================================
+
+JUnit 5, TestFX, JaCoCo, Spotless with Palantir Java Format, and the Maven
+plugins named in pom.xml. These do not form part of the delivered application.
