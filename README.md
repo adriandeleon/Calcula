@@ -9,8 +9,10 @@ its tooltip.
 
 ## Commands
 
-- Run: `mvn -pl calcula-app javafx:run` (needs a prior `mvn package` so the CAS jars are staged;
-  works from the reactor root or from inside `calcula-app/`)
+- Run: `mvn package -DskipTests && mvn -pl calcula-app javafx:run`
+  — **`javafx:run` does not compile.** It is a plugin goal, not a lifecycle phase, so running it
+  alone launches whatever classes were last built; a change you have just made will not be in it.
+  The `package` is also what stages the CAS jars into `calcula-app/target/cas`.
 - Test: `mvn verify` — or `mvn test -DexcludedGroups=fx` for the pure suite alone
 - Format: `mvn spotless:apply` **before committing** — `spotless:check` runs at `verify`
 - Package: `mvn clean -Pdist package` ⇒ `calcula-dist/target/dist/Calcula-<version>.dmg`

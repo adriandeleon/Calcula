@@ -40,6 +40,14 @@ public final class InputCompletion {
     private static final double MAX_WIDTH = 760;
 
     /**
+     * Space beyond the widest row.
+     *
+     * <p>Text hard against a border reads as cut off whether or not it is, and the summary column ends
+     * at the right edge — so the popup is given room rather than sized to the exact millimetre.
+     */
+    private static final double BREATHING_ROOM = 24;
+
+    /**
      * Room for the vertical scrollbar.
      *
      * <p>Without it the list is sized to exactly fit its widest row, the scrollbar then takes some of
@@ -62,6 +70,9 @@ public final class InputCompletion {
      */
     private final RowView measurer = new RowView();
 
+    /** Marks the measurer, so nothing — a stylesheet, a test — mistakes it for a row on screen. */
+    private static final String MEASURER_CLASS = "completion-measurer";
+
     /**
      * What the last {@link #update()} decided to offer.
      *
@@ -82,6 +93,7 @@ public final class InputCompletion {
         // so it contributes nothing to layout, and invisible so it draws nothing.
         measurer.node.setManaged(false);
         measurer.node.setVisible(false);
+        measurer.node.getStyleClass().add(MEASURER_CLASS);
         javafx.scene.layout.StackPane holder = new javafx.scene.layout.StackPane(list, measurer.node);
         holder.setPickOnBounds(false);
         popup.getContent().add(holder);
@@ -95,6 +107,11 @@ public final class InputCompletion {
 
     public boolean isShowing() {
         return popup.isShowing();
+    }
+
+    /** Visible for tests: the popup's content root. */
+    public javafx.scene.Node popupContentForTest() {
+        return popup.getContent().get(0);
     }
 
     /** Visible for tests: the width last computed for the popup. */
@@ -179,7 +196,7 @@ public final class InputCompletion {
             measurer.node.applyCss();
             widest = Math.max(widest, measurer.node.prefWidth(-1));
         }
-        return Math.clamp(widest + SCROLLBAR_ALLOWANCE, MIN_WIDTH, MAX_WIDTH);
+        return Math.clamp(widest + SCROLLBAR_ALLOWANCE + BREATHING_ROOM, MIN_WIDTH, MAX_WIDTH);
     }
 
     /** Move the highlight. Returns false when nothing is showing, so the caller can do something else. */

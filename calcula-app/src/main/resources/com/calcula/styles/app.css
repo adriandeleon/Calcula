@@ -510,3 +510,8 @@
     -fx-max-height: 0;
     -fx-opacity: 0;
 }
+
+/* The summary ends at the right edge, so the row is given a little room past it. */
+.completion-row {
+    -fx-padding: 0 4 0 2;
+}
