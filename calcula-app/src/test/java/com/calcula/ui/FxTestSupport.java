@@ -125,6 +125,30 @@ public final class FxTestSupport {
         return root;
     }
 
+    /**
+     * Like {@link #realize}, but with the application's own stylesheets on the scene.
+     *
+     * <p>{@code realize} gives a bare Scene, so a test using it sees <b>only AtlantaFX Primer</b> — the
+     * user-agent sheet — and neither {@code app.css} nor the theme tokens. That is fine for structure
+     * and silently wrong for anything measured: sizes, spacing, fonts and every {@code -color-*} come
+     * from the sheets that are not there. A row pinned to the wrong height by a Primer rule that
+     * {@code app.css} exists to override looks perfectly correct to a test built the bare way, because
+     * the override was never loaded — which is the drift this class's own header warns about.
+     *
+     * <p>Use this whenever an assertion depends on what a rule computes rather than on which style
+     * class is attached. It matches what {@code App.start} does, which is the only configuration that
+     * ships.
+     */
+    public static Region realizeThemed(Region root, Themes theme) throws Exception {
+        runOnFx(() -> {
+            Scene scene = new Scene(root, 980, 660);
+            Themes.apply(scene, theme);
+            root.applyCss();
+            root.layout();
+        });
+        return root;
+    }
+
     /** Pump the FX event queue until {@code condition} holds, or fail after {@code timeoutMs}. */
     public static void waitFor(String what, long timeoutMs, Callable<Boolean> condition) throws Exception {
         long deadline = System.nanoTime() + timeoutMs * 1_000_000L;

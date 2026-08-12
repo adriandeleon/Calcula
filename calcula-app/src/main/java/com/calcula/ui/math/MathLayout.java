@@ -387,8 +387,33 @@ public final class MathLayout {
                 layout(numerator, style.fractionPart(), top), layout(denominator, style.fractionPart(), bottom), style);
     }
 
+    /**
+     * A list of lists that is not a matrix, because it holds rules.
+     *
+     * <p>{@code solve} comes back as {@code [[x -> 2], [x -> 3]]}, which is a list of lists and so
+     * satisfies {@link Exprs#isMatrix} — and was drawn inside matrix fences. Those fences are a claim:
+     * they say linear algebra, and a set of solutions is not that. Nothing else in the window
+     * distinguishes the two, so the reader is left to notice that a "matrix" whose entries are arrows
+     * cannot be one.
+     *
+     * <p>Rules are a safe thing to key on, unlike the shape alone. {@code FactorInteger} also returns
+     * pairs — {@code [[3, 1], [5, 1]]} — and that is genuinely indistinguishable from a 2x2 integer
+     * matrix without knowing what produced it. Guessing there would mis-set real matrices, so it is
+     * left alone; a rule, by contrast, is never an element of a matrix.
+     */
+    private static boolean holdsRules(Call c) {
+        for (Expr row : Exprs.items(c)) {
+            for (Expr cell : Exprs.items(row)) {
+                if (cell instanceof Call inner && "Rule".equals(inner.head())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static Node list(Call c, MathStyle style, List<Integer> path) {
-        if (Exprs.isMatrix(c)) {
+        if (Exprs.isMatrix(c) && !holdsRules(c)) {
             List<List<Node>> rows = new ArrayList<>();
             for (int r = 0; r < c.arity(); r++) {
                 List<Node> cells = new ArrayList<>();

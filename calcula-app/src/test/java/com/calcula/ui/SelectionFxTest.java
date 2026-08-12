@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Widening, narrowing and clearing a selected part.
@@ -96,10 +97,12 @@ class SelectionFxTest {
     void movingWithNothingSelectedSaysSoInsteadOfThrowing() throws Exception {
         CalcWindow window = withEntry("x + 1");
         FxTestSupport.runOnFx(() -> window.run("select.widen"));
-        FxTestSupport.waitFor(
-                "an explanation",
-                5000,
-                () -> window.trailContents().stream().anyMatch(l -> l.contains("nothing is selected")));
+        FxTestSupport.waitFor("an explanation", 5000, () -> window.echoNote().contains("nothing is selected"));
+        // Said, not written down: a click that found nothing is interface feedback, and the trail
+        // is a record of what happened to the mathematics.
+        assertTrue(
+                window.trailContents().stream().noneMatch(l -> l.contains("nothing is selected")),
+                "the explanation belongs in the echo area, not in the record");
         FxTestSupport.runOnFx(window::dispose);
     }
 

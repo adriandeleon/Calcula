@@ -9,6 +9,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -37,6 +38,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
+import javafx.util.Duration;
 
 import com.calcula.AppInfo;
 import com.calcula.SessionLog;
@@ -122,6 +124,20 @@ public final class CalcWindow {
     private static final double STACK_PLOT_HEIGHT = 200;
 
     /**
+     * How wide a plot may grow when the column has room to spare.
+     *
+     * <p>{@link #STACK_PLOT_WIDTH} is the floor, not the size: measured in a 704px column, a plot used
+     * 360 of it and left the other half empty, and on a maximised window it is a fifth. PlotCanvas has
+     * always been able to grow — its layoutChildren resizes the canvas, re-fits the viewport and
+     * redraws — it was simply pinned at its preferred width and never asked to.
+     *
+     * <p>Capped rather than unbounded, because a plot is one value among several on a stack rather
+     * than the subject of the window. Left to fill a wide screen it would tower over the numbers above
+     * it, which is a different mistake from the one being fixed.
+     */
+    private static final double STACK_PLOT_MAX_WIDTH = 720;
+
+    /**
      * Space between the stack's gutter rail and the entry number.
      *
      * <p>The cell's own left padding is zero so the rail can sit flush against the edge, so this is
@@ -147,6 +163,23 @@ public final class CalcWindow {
     private final Label modes = new Label();
     private final Label engineStatus = new Label("CAS: loading…");
     private final Label busy = new Label("working…");
+
+    /** Transient interface feedback. See {@link #flash}. */
+    private final Label echoNote = new Label();
+
+    /** The typeset reading of the line being typed. See {@link #buildPreview}. */
+    private final HBox previewHost = new HBox();
+
+    /** What the strip last decided to show, kept so a test can assert the decision it acted on. */
+    private InputPreview.Preview lastPreview = InputPreview.QUIET;
+
+    /**
+     * Long enough that a burst of typing parses once, short enough to feel immediate.
+     *
+     * <p>Parsing is cheap — a lexer and a precedence climb over one short line — but setting the
+     * result as mathematics builds nodes, and doing that per keystroke is work nobody asked for.
+     */
+    private final PauseTransition previewDebounce = new PauseTransition(Duration.millis(90));
 
     /**
      * How many machine calls are in flight.
@@ -348,7 +381,7 @@ public final class CalcWindow {
         VBox centre = new VBox(tabs.node(), split);
         VBox.setVgrow(split, Priority.ALWAYS);
         root.setCenter(centre);
-        root.setBottom(new VBox(buildModeLine(), buildEchoArea()));
+        root.setBottom(new VBox(buildModeLine(), buildPreview(), buildEchoArea()));
         root.getStyleClass().add("calc-root");
 
         input.addEventFilter(KeyEvent.KEY_PRESSED, this::onKey);
@@ -762,7 +795,7 @@ public final class CalcWindow {
      */
     private void rewriteSelection(String head) {
         if (selected == null) {
-            noteFromFx("nothing is selected — click a part of a formula first");
+            flash("nothing is selected — click a part of a formula first");
             return;
         }
         Selected target = selected;
@@ -818,7 +851,7 @@ public final class CalcWindow {
      */
     private void exportSheetToPdf() {
         if (stack.isEmpty()) {
-            noteFromFx("nothing on the stack to export");
+            flash("nothing on the stack to export");
             return;
         }
         javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
@@ -833,9 +866,9 @@ public final class CalcWindow {
         try {
             javafx.scene.image.Image page = SheetRenderer.render(List.copyOf(stack), mathSize);
             com.calcula.pdf.PdfWriter.writeImage(target.toPath(), page, SheetRenderer.SCALE);
-            noteFromFx("exported " + target.getName());
+            flash("exported " + target.getName());
         } catch (Exception e) {
-            noteFromFx("could not export: " + describe(e));
+            flash("could not export: " + describe(e));
         }
     }
 
@@ -862,7 +895,7 @@ public final class CalcWindow {
                 .addAll(
                         menuItem("copy", "Copy (every format)", () -> {
                             ClipboardExport.copy(value);
-                            noteFromFx(ClipboardExport.describe(value));
+                            flash(ClipboardExport.describe(value));
                         }),
                         new SeparatorMenuItem(),
                         copyAs("latex", "LaTeX", value, TexWriter::write),
@@ -871,7 +904,7 @@ public final class CalcWindow {
                         copyAs("evaluate", "Plain text", value, Formatter::format),
                         menuItem("image", "Copy as PNG", () -> {
                             ClipboardExport.copyImage(value);
-                            noteFromFx("copied a picture");
+                            flash("copied a picture");
                         }));
         return menu;
     }
@@ -879,7 +912,7 @@ public final class CalcWindow {
     private MenuItem copyAs(String glyph, String format, Expr value, java.util.function.Function<Expr, String> writer) {
         return menuItem(glyph, "Copy as " + format, () -> {
             ClipboardExport.copyText(writer.apply(value));
-            noteFromFx("copied as " + format);
+            flash("copied as " + format);
         });
     }
 
@@ -887,14 +920,10 @@ public final class CalcWindow {
         ClipboardContent content = new ClipboardContent();
         content.putString(text);
         Clipboard.getSystemClipboard().setContent(content);
-        noteFromFx("copied " + text.lines().count() + " line(s)");
+        flash("copied " + text.lines().count() + " line(s)");
     }
 
     /** A note raised from the FX thread, where the machine itself must not be touched. */
-    private void noteFromFx(String message) {
-        onMachine(m -> m.record(new TrailEntry(TrailEntry.Kind.NOTE, message)));
-    }
-
     private void showAbout() {
         Alert about = new Alert(Alert.AlertType.INFORMATION);
         about.setTitle("About Calcula");
@@ -1428,11 +1457,22 @@ public final class CalcWindow {
      * carrying its kind as data — which is what lets {@link #trailCellClass} colour it.
      */
     private static String renderTrail(TrailEntry entry) {
+        return trailSigil(entry) + entry.text();
+    }
+
+    /**
+     * The mark in front of a trail line, padded to one column.
+     *
+     * <p>Split out from the text so the cell can put it in its own box and wrap the rest under it.
+     * {@link #renderTrail} rebuilds the whole line from this, so the string a test reads and the two
+     * boxes the eye reads cannot drift apart.
+     */
+    private static String trailSigil(TrailEntry entry) {
         return switch (entry.kind()) {
-            case INPUT -> entry.text();
-            case RESULT -> "  = " + entry.text();
-            case ERROR -> "  ! " + entry.text();
-            case NOTE -> "  · " + entry.text();
+            case INPUT -> "";
+            case RESULT -> "  = ";
+            case ERROR -> "  ! ";
+            case NOTE -> "  · ";
         };
     }
 
@@ -1503,10 +1543,9 @@ public final class CalcWindow {
                     return;
                 }
                 // A CAS spends its life moving between exact and approximate. Modes reports the
-                // POLICY (symbolic, fractions); nothing reported the VALUE. One Flt anywhere in
-                // the tree contaminates it, so this is containsInexact and not !isExact — the
-                // latter is shallow and would mark every symbolic result approximate.
-                boolean inexact = Exprs.containsInexact(value);
+                // POLICY (symbolic, fractions); nothing reported the VALUE. See RowMarker for what
+                // the rail means, why it is one colour and not two, and why only Hold is caught.
+                boolean inexact = RowMarker.unsettled(value);
 
                 // Always present, usually transparent: a value acquiring a marker must not shift
                 // the text beside it.
@@ -1522,6 +1561,10 @@ public final class CalcWindow {
                     gutter.getStyleClass().add("inexact");
                     index.getStyleClass().add("inexact");
                 }
+
+                // A picture rather than something set as mathematics. It has no baseline to sit the
+                // entry number on, which is why the two are aligned differently below.
+                boolean picture = PlotValue.isPlot(value) || GraphicsScene.isGraphics(value);
 
                 Region content = PlotValue.isPlot(value)
                         ? plotFor(value)
@@ -1541,13 +1584,40 @@ public final class CalcWindow {
                 // A rail in the BASELINE_LEFT box would vanish: a plain Region reports
                 // BASELINE_OFFSET_SAME_AS_HEIGHT, so it gets aligned by its own box and, with no
                 // content to give it height, draws nothing.
+                //
+                // A PLOT is that same trap one layer out. PlotCanvas is a plain Region too, so it
+                // also reports BASELINE_OFFSET_SAME_AS_HEIGHT — and a box told to align on the
+                // baseline therefore treats the BOTTOM of a 200px chart as the line to sit the entry
+                // number on, dropping "3:" to the foot of the plot. Faking a baseline on the canvas
+                // would be answering the wrong question: a picture genuinely has none, and a block is
+                // labelled at its top. So the alignment is chosen by what the row holds.
+                if (picture) {
+                    // Only a picture grows. A formula is set at its natural width and stretching it
+                    // would put air inside the mathematics, which is exactly what the spacing rules
+                    // in MathLayout exist to control.
+                    HBox.setHgrow(content, Priority.ALWAYS);
+                    content.setMaxWidth(STACK_PLOT_MAX_WIDTH);
+                }
+
                 HBox formula = new HBox(10, index, content);
-                formula.setAlignment(Pos.BASELINE_LEFT);
+                formula.setAlignment(picture ? Pos.TOP_LEFT : Pos.BASELINE_LEFT);
                 HBox.setHgrow(formula, Priority.ALWAYS);
 
                 HBox row = new HBox(GUTTER_GAP, gutter, formula);
                 row.setFillHeight(true);
                 HBox.setHgrow(gutter, Priority.NEVER); // a fixed rail, not a flexible column
+
+                // The marker, asked to explain itself. A rail that says "something is off with this
+                // value" and cannot say WHAT is a puzzle rather than a signal — and the held case is
+                // the one where the answer is genuinely useful, because it names a thing the user
+                // can go and look up.
+                String why = RowMarker.explanation(value);
+                Tooltip.install(row, why == null ? null : new Tooltip(why));
+
+                // Set mathematics is a tree of Text nodes with no text of its own, so without this a
+                // screen reader finds a bag of glyphs where the answer is.
+                row.setAccessibleText(RowMarker.spoken(position, value));
+
                 setGraphic(row);
                 setStyle(stackCellPadding);
                 setText(null);
@@ -1674,7 +1744,7 @@ public final class CalcWindow {
         selected = next;
         stackView.refresh();
         if (next != null) {
-            setStatusNote("selected " + Formatter.format(next.at().expr()));
+            flash("selected " + Formatter.format(next.at().expr()));
         }
     }
 
@@ -1732,12 +1802,12 @@ public final class CalcWindow {
 
     private void withSelection(java.util.function.UnaryOperator<Selected> move) {
         if (selected == null) {
-            noteFromFx("nothing is selected — click a part of a formula first");
+            flash("nothing is selected — click a part of a formula first");
             return;
         }
         Selected next = move.apply(selected);
         if (next == null) {
-            noteFromFx("no further");
+            flash("no further");
             return;
         }
         select(next);
@@ -1752,7 +1822,7 @@ public final class CalcWindow {
     /** Substitute a typed expression for the selected part. */
     private void replaceSelectedPart() {
         if (selected == null) {
-            noteFromFx("nothing is selected — click a part of a formula first");
+            flash("nothing is selected — click a part of a formula first");
             return;
         }
         Selected target = selected;
@@ -1761,7 +1831,7 @@ public final class CalcWindow {
             try {
                 replacement = Parser.parse(typed);
             } catch (RuntimeException e) {
-                noteFromFx("could not read that: " + describe(e));
+                flash("could not read that: " + describe(e));
                 return;
             }
             substitutePart(target, replacement);
@@ -1835,9 +1905,6 @@ public final class CalcWindow {
     }
 
     /** A one-line note in the echo area, without going near the machine. */
-    private void setStatusNote(String message) {
-        noteFromFx(message);
-    }
 
     /**
      * What an empty trail says.
@@ -1892,11 +1959,11 @@ public final class CalcWindow {
      * <p>One helper for both surfaces: the arithmetic and the "already at the limit" case are the same
      * whichever size is being nudged, and the only thing that differs is where the value lands.
      *
-     * <p><b>Silent when it works.</b> The text changing size IS the feedback, and the only channel for
-     * a message here is the trail — which is the log of the calculation, not of the window. Two presses
-     * of a zoom button put two lines of "Trail text 13 point" in among the results, which is noise in
-     * the one place that should be nothing but arithmetic. Reaching the limit is different: nothing
-     * happens on screen, so the press needs an answer.
+     * <p><b>Silent when it works.</b> The text changing size IS the feedback. Two presses of a zoom
+     * button putting two lines of "Trail text 13 point" in among the results would be noise in the one
+     * place that should be nothing but arithmetic. Reaching the limit is different: nothing happens on
+     * screen, so the press needs an answer — and it now goes to the echo area rather than the trail,
+     * which is the channel this comment used to say did not exist. See {@link #flash}.
      */
     private void zoom(
             String what, double current, double step, double min, double max, java.util.function.DoubleConsumer apply) {
@@ -1905,7 +1972,7 @@ public final class CalcWindow {
             String message = what + " is already at its " + (step > 0 ? "largest" : "smallest");
             if (!message.equals(zoomLimitSaid)) {
                 zoomLimitSaid = message;
-                noteFromFx(message);
+                flash(message);
             }
             return;
         }
@@ -2015,9 +2082,28 @@ public final class CalcWindow {
                 getStyleClass().removeAll("trail-input", "trail-result", "trail-error", "trail-note");
                 if (empty || entry == null) {
                     setText(null);
+                    setGraphic(null);
                     return;
                 }
-                setText(renderTrail(entry));
+                // Sigil and text as two boxes rather than one string, which is what buys the HANGING
+                // indent: a wrapped line resumes under the text and not under the "= ", so the sigil
+                // column the trail is set in monospace FOR survives being wrapped.
+                Label sigil = new Label(trailSigil(entry));
+                sigil.getStyleClass().add("trail-sigil");
+                sigil.setMinWidth(Region.USE_PREF_SIZE);
+
+                Label said = new Label(entry.text());
+                said.setWrapText(true);
+                HBox.setHgrow(said, Priority.ALWAYS);
+
+                HBox line = new HBox(sigil, said);
+                setText(null);
+                setGraphic(line);
+                // Without this the cell asks for the width of its longest line and the list grows a
+                // horizontal scrollbar instead of wrapping — which is what it did: FactorInteger's
+                // result was cut off mid-token at "[65". A cell that requests nothing takes the width
+                // it is given, and the label wraps inside it.
+                setPrefWidth(0);
                 setStyle(trailCellStyle);
                 getStyleClass().add(trailCellClass(entry));
                 setOnContextMenuRequested(e -> {
@@ -2442,15 +2528,100 @@ public final class CalcWindow {
         modes.setText(shownModes.describe() + "  " + reader.label());
     }
 
+    /**
+     * The line, set as mathematics, above the line being typed.
+     *
+     * <p>Parsed on a short debounce and never evaluated. It answers the question the echo area could
+     * not: {@code 1/2 + 1/3} and {@code 1/(2 + 1)/3} are four characters apart and produce very
+     * different answers, and until now the only way to find out which one had been typed was to press
+     * Enter and read the result backwards.
+     *
+     * <p>It also gives a syntax error somewhere to be. {@code ParseException} has carried its offset
+     * since it was written — its own javadoc says "so the echo area can point a caret at it" — and
+     * nothing had ever shown it.
+     *
+     * <p>Hidden and unmanaged when there is nothing to say, so a blank line costs no height.
+     */
+    private Region buildPreview() {
+        previewHost.getStyleClass().add("input-preview");
+        previewHost.setAlignment(Pos.CENTER_LEFT);
+        previewHost.setVisible(false);
+        previewHost.setManaged(false);
+        previewDebounce.setOnFinished(e -> refreshPreview());
+        return previewHost;
+    }
+
+    private void refreshPreview() {
+        InputPreview.Preview preview = InputPreview.of(input.getText(), reader.id());
+        lastPreview = preview;
+        if (preview.isQuiet()) {
+            previewHost.getChildren().clear();
+            previewHost.setVisible(false);
+            previewHost.setManaged(false);
+            return;
+        }
+        if (preview.error() != null) {
+            Label said = new Label(InputPreview.message(preview));
+            said.getStyleClass().add("input-preview-error");
+            previewHost.getChildren().setAll(said);
+        } else {
+            // The same size as the stack, on purpose: this is a promise about what is going to land
+            // there, and a promise set at a different size is a weaker one.
+            previewHost.getChildren().setAll(MathLayout.render(preview.parsed(), MathStyle.of(mathSize)));
+        }
+        previewHost.setVisible(true);
+        previewHost.setManaged(true);
+    }
+
     private Region buildEchoArea() {
         prompt.getStyleClass().add("echo-prompt");
         input.getStyleClass().add("echo-input");
         input.setContextMenu(inputMenu());
         HBox.setHgrow(input, Priority.ALWAYS);
-        HBox bar = new HBox(8, prompt, input);
+        echoNote.getStyleClass().add("echo-note");
+        echoNote.setVisible(false);
+        echoNote.setManaged(false);
+        // Cleared by the next keystroke, the way an echo area is: a message about what just happened
+        // stops being true the moment the user does something else.
+        input.textProperty().addListener((o, was, now) -> {
+            clearFlash();
+            previewDebounce.playFromStart();
+        });
+        HBox bar = new HBox(8, prompt, input, echoNote);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("echo-area");
         return bar;
+    }
+
+    /**
+     * Say something briefly, without writing it down.
+     *
+     * <p>The counterpart to recording a {@code Kind.NOTE} on the machine, and the distinction is
+     * the point. The trail records
+     * what happened to <b>the mathematics</b>: what was typed, what came back, what failed, and the
+     * machine notes {@code Kind.NOTE} was documented for — "a mode change, a stored variable". This
+     * reports what <b>the interface</b> just did: a selection, a copy, an export.
+     *
+     * <p>Selection is the case that forces the split. {@code select()} fires on every click on a
+     * subterm, so clicking around a formula to find the right piece wrote a line per click into a log
+     * whose stated value is being a plain-text record you can diff, hand-write or paste half of into
+     * a chat — and those lines are saved into the {@code .calc} file. In the reported window, four of
+     * the twelve visible trail lines were the calculator narrating clicks.
+     *
+     * <p>This is what the region is named for. Calcula calls its bottom line the echo area after
+     * Emacs, where that is exactly where a transient message goes; it simply never had one.
+     */
+    private void flash(String message) {
+        echoNote.setText(message);
+        echoNote.setVisible(true);
+        echoNote.setManaged(true);
+    }
+
+    private void clearFlash() {
+        if (echoNote.isVisible()) {
+            echoNote.setVisible(false);
+            echoNote.setManaged(false);
+        }
     }
 
     /**
@@ -2526,6 +2697,21 @@ public final class CalcWindow {
     /** Visible for tests: the stack as it is displayed. */
     public List<String> stackDisplay() {
         return read(() -> stack.stream().map(Formatter::format).toList());
+    }
+
+    /**
+     * Visible for tests: what the echo area is saying about itself, or "" when it is quiet.
+     *
+     * <p>Separate from {@link #trailContents()} on purpose, because the two are different claims:
+     * "the user was told" is this one, "it went into the record" is that one.
+     */
+    public String echoNote() {
+        return read(() -> echoNote.isVisible() ? echoNote.getText() : "");
+    }
+
+    /** Visible for tests: what the strip above the input is currently showing. */
+    public InputPreview.Preview previewShown() {
+        return read(() -> previewHost.isVisible() ? lastPreview : InputPreview.QUIET);
     }
 
     /** Visible for tests: the trail as it is displayed, sigils included. */

@@ -52,10 +52,18 @@
  * The vertical padding is NOT set here — CalcWindow sets it inline, because it has to follow the
  * maths size and CSS cannot express a fraction of the font. What is left here is the value it falls
  * back to before the first one is applied.
+ *
+ * -fx-cell-size is restored to JavaFX's own DEFAULT_CELL_SIZE, and the exact value is load-bearing.
+ * Primer sets 2.8em on `.list-view .list-cell`, and ListCellSkin.computePrefHeight is not a max():
+ * it returns the cell size INSTEAD of measuring the content whenever the two differ, so a row was
+ * pinned at 42px whatever it held. Measured before the fix: a 7-row matrix reported 150px of content
+ * in a 109px row and painted 41px of itself over its neighbours. Only the sentinel restores
+ * measuring, so this cannot be "tidied" into a round number — see StackRowHeightFxTest.
  */
 .stack-view .list-cell {
     -fx-background-color: transparent;
     -fx-padding: 6 12 6 0;
+    -fx-cell-size: 24;
 }
 
 .stack-view .list-cell:selected {
@@ -114,6 +122,13 @@
     -fx-font-size: 11px;
     -fx-text-fill: -color-fg-muted;
     -fx-padding: 1 10 1 10;
+    /*
+     * Same sentinel, same reason as the stack — and here it is what makes the 1px padding above mean
+     * anything at all. Primer's 2.8em resolves against this cell's own 11px, so every trail line was
+     * 33px tall when the padding asks for about 15: the log was spending twice the height it needed
+     * and showing half the history it could. See StackRowHeightFxTest.
+     */
+    -fx-cell-size: 24;
 }
 
 /* What you said. The baseline everything else is measured against. */
@@ -676,4 +691,42 @@
 .sheet-tab-new:hover {
     -fx-background-color: -color-bg-subtle;
     -fx-text-fill: -color-fg-default;
+}
+
+/*
+ * Transient interface feedback, at the right-hand end of the echo area — what the INTERFACE just
+ * did, as opposed to what happened to the mathematics, which is the trail's job. Faint on purpose:
+ * it is the calculator talking about itself, so it should be findable and not noticed, exactly like
+ * .trail-note. It clears on the next keystroke, so it never accumulates.
+ */
+.echo-note {
+    -fx-font-family: "Inter", "SF Pro Text", "Segoe UI", sans-serif;
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-subtle;
+    -fx-padding: 0 2 0 8;
+}
+
+/*
+ * The line being typed, set as mathematics, directly above the line itself. Same ground as the echo
+ * area so the two read as one region; the strip takes no height at all when there is nothing to say.
+ */
+.input-preview {
+    -fx-background-color: -color-bg-default;
+    -fx-padding: 4 12 0 26;
+}
+
+/* Why nothing came back — the same meaning, and the same colour, as an error in the trail. */
+.input-preview-error {
+    -fx-font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-danger-fg;
+}
+
+/*
+ * The mark in front of a trail line, in its own column so a wrapped line resumes under the TEXT
+ * rather than under the sigil. Inherits the cell's face and colour; it is the same line, set in two
+ * boxes.
+ */
+.trail-sigil {
+    -fx-text-fill: inherit;
 }
