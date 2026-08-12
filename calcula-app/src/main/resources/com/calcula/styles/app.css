@@ -734,3 +734,15 @@
 .trail-sigil {
     -fx-text-fill: inherit;
 }
+
+/*
+ * The decimal for an exact value, at the right-hand edge of its row. Faint, because it is a note
+ * about the value rather than the value: 5/6 is the answer and 0.8333 is the thing you can compare
+ * against something. Monospace so a column of them lines up down the margin.
+ */
+.stack-approximation {
+    -fx-font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-subtle;
+    -fx-padding: 0 0 0 16;
+}

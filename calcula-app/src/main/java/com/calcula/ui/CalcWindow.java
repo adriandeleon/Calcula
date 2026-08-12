@@ -3,8 +3,11 @@ package com.calcula.ui;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -166,6 +169,37 @@ public final class CalcWindow {
 
     /** Transient interface feedback. See {@link #flash}. */
     private final Label echoNote = new Label();
+
+    /**
+     * Decimals already worked out, by the value they belong to.
+     *
+     * <p>Keyed on the Expr because that is what the answer is <em>of</em> — the same ratio appearing
+     * twice on the stack is the same decimal, and a cell being recycled past it must not ask again.
+     * Bounded, because a long session is a long stack.
+     */
+    private final Map<Expr, String> approximations = new LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Expr, String> eldest) {
+            return size() > MAX_APPROXIMATIONS;
+        }
+    };
+
+    /** Values already sent to the engine, so a redraw does not queue the same question again. */
+    private final Set<Expr> approximationsAsked = new HashSet<>();
+
+    private static final int MAX_APPROXIMATIONS = 512;
+
+    /**
+     * Off the worker, because this is the window's curiosity rather than the user's instruction.
+     *
+     * <p>A queued approximation must never delay something that was actually asked for. The engine
+     * serialises internally, so the two threads take turns rather than collide.
+     */
+    private final ExecutorService approximator = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "calc-approx");
+        t.setDaemon(true);
+        return t;
+    });
 
     /** The trail column, held so it can be taken out of the split and put back. */
     private VBox trailPane;
@@ -540,6 +574,7 @@ public final class CalcWindow {
             settingsStore.save(settings);
         }
         worker.shutdownNow();
+        approximator.shutdownNow();
         engine.close();
     }
 
@@ -553,6 +588,11 @@ public final class CalcWindow {
         registry.register("stack.roll", "Roll", "Rotate the top three values", () -> machineOp(new Op.Roll(3)));
         registry.register("stack.clear", "Clear", "Empty the stack", () -> machineOp(new Op.Clear()));
         registry.register("view.trail", "Trail", "Show or hide the trail column", this::toggleTrail);
+        registry.register(
+                "view.approximations",
+                "Approximations",
+                "Show or hide the decimal beside an exact value",
+                this::toggleApproximations);
         registry.register(
                 "stack.evaluate", "Evaluate", "Re-evaluate the top value", () -> machineOp(new Op.Evaluate()));
         registry.register(
@@ -1625,6 +1665,20 @@ public final class CalcWindow {
 
                 HBox formula = new HBox(10, index, content);
                 formula.setAlignment(picture ? Pos.TOP_LEFT : Pos.BASELINE_LEFT);
+
+                // The decimal, out at the right-hand edge. The margin was empty -- measured, about
+                // half the column -- and this is metadata about the value, which is the same argument
+                // that puts the exactness rail in the gutter: it goes beside the value, never inside
+                // it. Most rows have nothing to put here and stay exactly as they were.
+                String decimal = approximationFor(value);
+                if (decimal != null) {
+                    Region gap = new Region();
+                    HBox.setHgrow(gap, Priority.ALWAYS);
+                    Label shown = new Label(decimal);
+                    shown.getStyleClass().add("stack-approximation");
+                    shown.setMinWidth(Region.USE_PREF_SIZE);
+                    formula.getChildren().addAll(gap, shown);
+                }
                 HBox.setHgrow(formula, Priority.ALWAYS);
 
                 HBox row = new HBox(GUTTER_GAP, gutter, formula);
@@ -2627,12 +2681,72 @@ public final class CalcWindow {
      * tall, in an application shaped like Emacs — and because a window whose proportions are a
      * constant fits one kind of work.
      */
+    private void toggleApproximations() {
+        boolean showing = !settings.showApproximations();
+        saveNow(settings.withApproximations(showing));
+        stackView.refresh();
+        flash(showing ? "approximations shown" : "approximations hidden");
+    }
+
     private void toggleTrail() {
         boolean showing = !settings.trailShown();
         saveNow(settings.withTrailShown(showing));
         dividerWatched = false;
         applyTrailLayout();
         flash(showing ? "trail shown" : "trail hidden");
+    }
+
+    /**
+     * The decimal for a value, if there is one to hand.
+     *
+     * <p>Answers immediately or not at all. A ratio is worked out here and now — no engine, which
+     * matters because exact arithmetic works without one and so should knowing how big the answer is.
+     * Anything else is asked of the engine in the background, and the row is left plain until the
+     * answer arrives and brings a refresh with it.
+     */
+    private String approximationFor(Expr value) {
+        if (!settings.showApproximations() || !Approximation.worth(value)) {
+            return null;
+        }
+        String direct = Approximation.direct(value, shownModes.precision());
+        if (direct != null) {
+            return direct;
+        }
+        String known = approximations.get(value);
+        if (known != null) {
+            return known.isEmpty() ? null : known;
+        }
+        askForApproximation(value);
+        return null;
+    }
+
+    private void askForApproximation(Expr value) {
+        if (!approximationsAsked.add(value)) {
+            return;
+        }
+        Expr question = Approximation.request(value, shownModes.precision());
+        if (question == null) {
+            return;
+        }
+        CasEngine asked = engine;
+        approximator.execute(() -> {
+            String answer;
+            try {
+                // Empty rather than null for "asked and there is nothing to show", so the cache
+                // remembers the refusal and the question is not put again on every redraw.
+                String shown = Approximation.shown(asked.eval(question));
+                answer = shown == null ? "" : shown;
+            } catch (Exception e) {
+                answer = "";
+            }
+            String settled = answer;
+            Platform.runLater(() -> {
+                approximations.put(value, settled);
+                if (!settled.isEmpty()) {
+                    stackView.refresh();
+                }
+            });
+        });
     }
 
     private Region buildPreview() {

@@ -399,6 +399,21 @@ Schema 3, and the migration is that there is nothing to migrate: an added scalar
 default, so a file from the previous build opens the trail at its usual width. A test writes a
 schema-2 file by hand and says so.
 
+### How big is it
+
+An exact answer is the right answer and not always the useful one. Every stack row whose value has a
+decimal shows it in the right margin — `5/6` beside `≈ 0.833333333333` — with `view.approximations`
+to turn the column off.
+
+Most rows show nothing. An integer is its own decimal, a value already carrying float error wears the
+amber rail instead, and anything with a free symbol has none: `N(x + 1)` is `1 + x`, a round trip
+spent to learn nothing. The structural check runs first, so the engine is only ever asked about a
+closed form.
+
+A ratio never reaches the engine — `BigDecimal` divides it here. The CAS is a capability rather than
+a precondition, so a window with no engine still adds up fractions, and it should still be able to
+say how big the answer is.
+
 ### Still open
 
 **Which input model is the default.** Deliberately undecided. Both readers work,

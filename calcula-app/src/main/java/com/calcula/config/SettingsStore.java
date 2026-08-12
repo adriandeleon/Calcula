@@ -80,7 +80,8 @@ public final class SettingsStore {
                 // which is exactly what it did when there was nothing to read.
                 readDouble(props, "trailSize", d.trailSize()),
                 readDouble(props, "trailSplit", d.trailSplit()),
-                readBool(props, "trailShown", d.trailShown()));
+                readBool(props, "trailShown", d.trailShown()),
+                readBool(props, "showApproximations", d.showApproximations()));
     }
 
     /**
@@ -102,6 +103,7 @@ public final class SettingsStore {
         props.setProperty("trailSize", Double.toString(settings.trailSize()));
         props.setProperty("trailSplit", Double.toString(settings.trailSplit()));
         props.setProperty("trailShown", Boolean.toString(settings.trailShown()));
+        props.setProperty("showApproximations", Boolean.toString(settings.showApproximations()));
         try {
             Files.createDirectories(file.getParent());
             Path temp = file.resolveSibling(FILE_NAME + ".tmp");
