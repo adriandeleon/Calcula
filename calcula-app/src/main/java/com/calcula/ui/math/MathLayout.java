@@ -85,6 +85,9 @@ public final class MathLayout {
      * one shape to lay out regardless of whether the formula happened to be a single letter.
      */
     public static Region render(Expr e, MathStyle style) {
+        // Here rather than only in Themes.apply: a formula is also rendered into the offscreen scene
+        // the clipboard picture uses, which never applies a theme. The check is a volatile read.
+        com.calcula.ui.Fonts.load();
         Node node = layout(e, style, ExprPath.ROOT);
         if (node instanceof Region region) {
             return region;

@@ -31,19 +31,26 @@ dependencies, including JAS)
 Fonts
 ================================================================================
 
-Bundled under `com/calcula/fonts/`, unmodified, and used as the interface and
-monospaced faces. Both are licensed under the SIL Open Font License 1.1, which
-permits bundling and redistribution within an application.
+Bundled under `com/calcula/fonts/`, unmodified, and used as the interface,
+monospaced and mathematics faces. All are licensed under the SIL Open Font
+License 1.1, which permits bundling and redistribution within an application.
 
     Inter          — https://github.com/rsms/inter
                      (c) The Inter Project Authors
     JetBrains Mono — https://github.com/JetBrains/JetBrainsMono
                      (c) JetBrains
+    STIX Two Text  — https://github.com/stipub/stixfonts
+                     (c) 2001-2021 The STIX Fonts Project Authors, with
+                     Reserved Font Name "TM Math". Version 2.0.2, unmodified.
+                     STIX Fonts(TM) is a trademark of The Institute of
+                     Electrical and Electronics Engineers, Inc.
 
     The full OFL 1.1 text is at https://openfontlicense.org.
 
-Typeset formulas do NOT use a bundled font: they are set in JavaFX's logical
-"Serif" family, which resolves on every platform without shipping a maths face.
+STIX Two Text is the face typeset formulas are set in. It is bundled rather than
+requested because the alternative — JavaFX's logical "Serif" — resolves on every
+platform but not to the same thing, and for an application whose output IS the
+typeset mathematics, that is the product differing per platform.
 
 ================================================================================
 Toolkit and interface

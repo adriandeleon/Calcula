@@ -23,8 +23,15 @@ public record MathStyle(String family, double baseSize, int level) {
 
     public static final int MAX_LEVEL = SCALE.length - 1;
 
-    /** A serif face, because mathematics is set in one and JavaFX's logical families are portable. */
-    public static final String DEFAULT_FAMILY = "Serif";
+    /**
+     * The bundled maths face.
+     *
+     * <p>Was the logical {@code Serif}, which is portable in the sense that it always resolves and not
+     * in the sense that it resolves to the same thing — so formulas were set in whatever serif the
+     * platform had. For an application whose output is the typeset mathematics, that is the product
+     * differing per platform.
+     */
+    public static final String DEFAULT_FAMILY = com.calcula.ui.Fonts.MATH;
 
     public static MathStyle of(double baseSize) {
         return new MathStyle(DEFAULT_FAMILY, baseSize, 0);

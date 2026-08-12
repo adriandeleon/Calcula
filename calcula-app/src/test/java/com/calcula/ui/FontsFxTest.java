@@ -30,6 +30,37 @@ class FontsFxTest {
         FxTestSupport.runOnFx(Fonts::load);
         assertTrue(FxTestSupport.callOnFx(() -> Fonts.isAvailable(Fonts.UI)), "Inter did not register");
         assertTrue(FxTestSupport.callOnFx(() -> Fonts.isAvailable(Fonts.MONO)), "JetBrains Mono did not register");
+        assertTrue(FxTestSupport.callOnFx(() -> Fonts.isAvailable(Fonts.MATH)), "STIX Two Text did not register");
+    }
+
+    @Test
+    void aRenderedFormulaIsSetInTheBundledMathsFace() throws Exception {
+        // MathLayout registers the fonts itself, because a formula is also rendered into the offscreen
+        // scene the clipboard picture uses, which never applies a theme.
+        String family = FxTestSupport.callOnFx(() -> {
+            javafx.scene.layout.Region rendered = com.calcula.ui.math.MathLayout.render(
+                    com.calcula.parse.Parser.parse("x + 1"), com.calcula.ui.math.MathStyle.of(17));
+            new Scene(rendered);
+            rendered.applyCss();
+            rendered.layout();
+            return firstTextFamily(rendered);
+        });
+        assertEquals(Fonts.MATH, family);
+    }
+
+    private static String firstTextFamily(javafx.scene.Node node) {
+        if (node instanceof javafx.scene.text.Text text) {
+            return text.getFont().getFamily();
+        }
+        if (node instanceof javafx.scene.Parent parent) {
+            for (javafx.scene.Node child : parent.getChildrenUnmodifiable()) {
+                String found = firstTextFamily(child);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
     @Test

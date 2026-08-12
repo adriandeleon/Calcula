@@ -256,7 +256,7 @@ while 340 structural tests stayed green.
 
 ### Fonts
 
-Inter and JetBrains Mono are **bundled** (2.7 MB, both OFL-1.1, see `NOTICE`). Naming a font you
+Inter, JetBrains Mono and **STIX Two Text** are bundled (4.1 MB, all OFL-1.1, see `NOTICE`). Naming a font you
 have not shipped is a preference rather than a decision: it looks right on the machine it was chosen
 on and silently falls through to something else everywhere else.
 
@@ -272,8 +272,11 @@ This file declared three such faces and referenced them in six rules, none of wh
 effect. Faces are named literally at each use, and a test asserts what a styled node actually lays
 out in — the only thing worth asserting, since the failure is invisible.
 
-Typeset formulas are not affected either way: `MathLayout` picks fonts in code from `MathStyle`,
-using the logical `Serif` family, which resolves everywhere without shipping a maths face.
+Formulas are set in **STIX Two Text**, the face used for mathematics in scientific publishing.
+`MathLayout` registers the fonts itself rather than relying on a theme having been applied, because a
+formula is also rendered into the offscreen scene the clipboard picture uses. It was the logical
+`Serif`, which is portable in the sense that it always resolves and not in the sense that it resolves
+to the same thing — macOS ships STIX, which is exactly why the gap was invisible here.
 
 ### Finding out what exists
 

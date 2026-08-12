@@ -31,6 +31,17 @@ public final class Fonts {
     /** Chords, signatures, and anything that has to line up in a column. */
     public static final String MONO = "JetBrains Mono";
 
+    /**
+     * The face formulas are set in.
+     *
+     * <p>STIX Two Text, the family used for mathematics in scientific publishing. Bundled because the
+     * alternative was JavaFX's logical {@code Serif}, which resolves to whatever serif the platform
+     * happens to have — and for an application whose output IS the typeset mathematics, letting that
+     * differ per platform is letting the product differ per platform. macOS ships STIX, which is
+     * exactly why the gap was invisible here.
+     */
+    public static final String MATH = "STIX Two Text";
+
     private static final List<String> FILES = List.of(
             "inter/Inter-Regular.ttf",
             "inter/Inter-Italic.ttf",
@@ -39,16 +50,35 @@ public final class Fonts {
             "jetbrains-mono/JetBrainsMono-Regular.ttf",
             "jetbrains-mono/JetBrainsMono-Italic.ttf",
             "jetbrains-mono/JetBrainsMono-Bold.ttf",
-            "jetbrains-mono/JetBrainsMono-BoldItalic.ttf");
+            "jetbrains-mono/JetBrainsMono-BoldItalic.ttf",
+            "stix-two-text/STIX2Text-Regular.otf",
+            "stix-two-text/STIX2Text-Italic.otf",
+            "stix-two-text/STIX2Text-Bold.otf",
+            "stix-two-text/STIX2Text-BoldItalic.otf");
 
-    private static boolean loaded;
+    /**
+     * Volatile, so the fast path is a plain read rather than a lock.
+     *
+     * <p>{@code load()} is called once per formula rendered — the maths face has to be registered
+     * whoever is doing the rendering, including the offscreen scene the clipboard picture uses, which
+     * never applies a theme. Taking a monitor on every stack cell would be a real cost for a check
+     * that is false exactly once.
+     */
+    private static volatile boolean loaded;
 
     private Fonts() {}
 
     /** Register every bundled face. Idempotent, and cheap enough to call from anywhere styling starts. */
-    public static synchronized void load() {
+    public static void load() {
         if (loaded) {
             return;
+        }
+        loadOnce();
+    }
+
+    private static synchronized void loadOnce() {
+        if (loaded) {
+            return; // another thread got here first
         }
         loaded = true;
         for (String file : FILES) {
