@@ -182,6 +182,32 @@ class StateLanguageFxTest {
         FxTestSupport.runOnFx(window::dispose);
     }
 
+    /**
+     * The other half of amber: a value the engine declined to work out.
+     *
+     * <p>{@code Hold(Fibonacci(100))} reached the stack looking exactly like an answer — same ink,
+     * same weight, transparent rail — sitting beside real ones. The rail's meaning already covered it
+     * ("not exact, <em>or not finished</em>"); nothing was asking the second question.
+     */
+    @Test
+    void aValueTheEngineWouldNotEvaluateIsMarkedAndSaysWhy() throws Exception {
+        CalcWindow window = open();
+        FxTestSupport.runOnFx(() -> window.submit("Hold(Fibonacci(100))"));
+        FxTestSupport.waitFor(
+                "the held call", 5000, () -> !window.stackContents().isEmpty());
+
+        relayout(window);
+        assertTrue(classesOf(window, ".stack-gutter").contains("inexact"), "a held result is not a final answer");
+
+        // And it can say what it is complaining about — a rail that cannot be interrogated is a
+        // puzzle rather than a signal.
+        assertEquals(
+                "Fibonacci",
+                RowMarker.heldName(
+                        FxTestSupport.callOnFx(() -> window.stackContents().get(0))));
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
     private static KeyEvent keyPress(KeyCode code, boolean control) {
         return new KeyEvent(KeyEvent.KEY_PRESSED, "", "", code, false, control, false, false);
     }

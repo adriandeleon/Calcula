@@ -692,3 +692,16 @@
     -fx-background-color: -color-bg-subtle;
     -fx-text-fill: -color-fg-default;
 }
+
+/*
+ * Transient interface feedback, at the right-hand end of the echo area — what the INTERFACE just
+ * did, as opposed to what happened to the mathematics, which is the trail's job. Faint on purpose:
+ * it is the calculator talking about itself, so it should be findable and not noticed, exactly like
+ * .trail-note. It clears on the next keystroke, so it never accumulates.
+ */
+.echo-note {
+    -fx-font-family: "Inter", "SF Pro Text", "Segoe UI", sans-serif;
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-subtle;
+    -fx-padding: 0 2 0 8;
+}

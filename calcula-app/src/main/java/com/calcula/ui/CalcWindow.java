@@ -148,6 +148,9 @@ public final class CalcWindow {
     private final Label engineStatus = new Label("CAS: loading…");
     private final Label busy = new Label("working…");
 
+    /** Transient interface feedback. See {@link #flash}. */
+    private final Label echoNote = new Label();
+
     /**
      * How many machine calls are in flight.
      *
@@ -762,7 +765,7 @@ public final class CalcWindow {
      */
     private void rewriteSelection(String head) {
         if (selected == null) {
-            noteFromFx("nothing is selected — click a part of a formula first");
+            flash("nothing is selected — click a part of a formula first");
             return;
         }
         Selected target = selected;
@@ -818,7 +821,7 @@ public final class CalcWindow {
      */
     private void exportSheetToPdf() {
         if (stack.isEmpty()) {
-            noteFromFx("nothing on the stack to export");
+            flash("nothing on the stack to export");
             return;
         }
         javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
@@ -833,9 +836,9 @@ public final class CalcWindow {
         try {
             javafx.scene.image.Image page = SheetRenderer.render(List.copyOf(stack), mathSize);
             com.calcula.pdf.PdfWriter.writeImage(target.toPath(), page, SheetRenderer.SCALE);
-            noteFromFx("exported " + target.getName());
+            flash("exported " + target.getName());
         } catch (Exception e) {
-            noteFromFx("could not export: " + describe(e));
+            flash("could not export: " + describe(e));
         }
     }
 
@@ -862,7 +865,7 @@ public final class CalcWindow {
                 .addAll(
                         menuItem("copy", "Copy (every format)", () -> {
                             ClipboardExport.copy(value);
-                            noteFromFx(ClipboardExport.describe(value));
+                            flash(ClipboardExport.describe(value));
                         }),
                         new SeparatorMenuItem(),
                         copyAs("latex", "LaTeX", value, TexWriter::write),
@@ -871,7 +874,7 @@ public final class CalcWindow {
                         copyAs("evaluate", "Plain text", value, Formatter::format),
                         menuItem("image", "Copy as PNG", () -> {
                             ClipboardExport.copyImage(value);
-                            noteFromFx("copied a picture");
+                            flash("copied a picture");
                         }));
         return menu;
     }
@@ -879,7 +882,7 @@ public final class CalcWindow {
     private MenuItem copyAs(String glyph, String format, Expr value, java.util.function.Function<Expr, String> writer) {
         return menuItem(glyph, "Copy as " + format, () -> {
             ClipboardExport.copyText(writer.apply(value));
-            noteFromFx("copied as " + format);
+            flash("copied as " + format);
         });
     }
 
@@ -887,14 +890,10 @@ public final class CalcWindow {
         ClipboardContent content = new ClipboardContent();
         content.putString(text);
         Clipboard.getSystemClipboard().setContent(content);
-        noteFromFx("copied " + text.lines().count() + " line(s)");
+        flash("copied " + text.lines().count() + " line(s)");
     }
 
     /** A note raised from the FX thread, where the machine itself must not be touched. */
-    private void noteFromFx(String message) {
-        onMachine(m -> m.record(new TrailEntry(TrailEntry.Kind.NOTE, message)));
-    }
-
     private void showAbout() {
         Alert about = new Alert(Alert.AlertType.INFORMATION);
         about.setTitle("About Calcula");
@@ -1503,10 +1502,9 @@ public final class CalcWindow {
                     return;
                 }
                 // A CAS spends its life moving between exact and approximate. Modes reports the
-                // POLICY (symbolic, fractions); nothing reported the VALUE. One Flt anywhere in
-                // the tree contaminates it, so this is containsInexact and not !isExact — the
-                // latter is shallow and would mark every symbolic result approximate.
-                boolean inexact = markedInexact(value);
+                // POLICY (symbolic, fractions); nothing reported the VALUE. See RowMarker for what
+                // the rail means, why it is one colour and not two, and why only Hold is caught.
+                boolean inexact = RowMarker.unsettled(value);
 
                 // Always present, usually transparent: a value acquiring a marker must not shift
                 // the text beside it.
@@ -1559,6 +1557,18 @@ public final class CalcWindow {
                 HBox row = new HBox(GUTTER_GAP, gutter, formula);
                 row.setFillHeight(true);
                 HBox.setHgrow(gutter, Priority.NEVER); // a fixed rail, not a flexible column
+
+                // The marker, asked to explain itself. A rail that says "something is off with this
+                // value" and cannot say WHAT is a puzzle rather than a signal — and the held case is
+                // the one where the answer is genuinely useful, because it names a thing the user
+                // can go and look up.
+                String why = RowMarker.explanation(value);
+                Tooltip.install(row, why == null ? null : new Tooltip(why));
+
+                // Set mathematics is a tree of Text nodes with no text of its own, so without this a
+                // screen reader finds a bag of glyphs where the answer is.
+                row.setAccessibleText(RowMarker.spoken(position, value));
+
                 setGraphic(row);
                 setStyle(stackCellPadding);
                 setText(null);
@@ -1685,7 +1695,7 @@ public final class CalcWindow {
         selected = next;
         stackView.refresh();
         if (next != null) {
-            setStatusNote("selected " + Formatter.format(next.at().expr()));
+            flash("selected " + Formatter.format(next.at().expr()));
         }
     }
 
@@ -1743,12 +1753,12 @@ public final class CalcWindow {
 
     private void withSelection(java.util.function.UnaryOperator<Selected> move) {
         if (selected == null) {
-            noteFromFx("nothing is selected — click a part of a formula first");
+            flash("nothing is selected — click a part of a formula first");
             return;
         }
         Selected next = move.apply(selected);
         if (next == null) {
-            noteFromFx("no further");
+            flash("no further");
             return;
         }
         select(next);
@@ -1763,7 +1773,7 @@ public final class CalcWindow {
     /** Substitute a typed expression for the selected part. */
     private void replaceSelectedPart() {
         if (selected == null) {
-            noteFromFx("nothing is selected — click a part of a formula first");
+            flash("nothing is selected — click a part of a formula first");
             return;
         }
         Selected target = selected;
@@ -1772,7 +1782,7 @@ public final class CalcWindow {
             try {
                 replacement = Parser.parse(typed);
             } catch (RuntimeException e) {
-                noteFromFx("could not read that: " + describe(e));
+                flash("could not read that: " + describe(e));
                 return;
             }
             substitutePart(target, replacement);
@@ -1846,9 +1856,6 @@ public final class CalcWindow {
     }
 
     /** A one-line note in the echo area, without going near the machine. */
-    private void setStatusNote(String message) {
-        noteFromFx(message);
-    }
 
     /**
      * What an empty trail says.
@@ -1916,7 +1923,7 @@ public final class CalcWindow {
             String message = what + " is already at its " + (step > 0 ? "largest" : "smallest");
             if (!message.equals(zoomLimitSaid)) {
                 zoomLimitSaid = message;
-                noteFromFx(message);
+                flash(message);
             }
             return;
         }
@@ -1976,24 +1983,6 @@ public final class CalcWindow {
      */
     static int stackGap(double mathSize) {
         return (int) Math.max(MIN_STACK_GAP, Math.round(mathSize * STACK_GAP_RATIO));
-    }
-
-    /**
-     * Whether a stack row wears the amber marker.
-     *
-     * <p>{@link Exprs#containsInexact} everywhere except a plot, where it answers the wrong question.
-     * {@code PlotValue.of} carries the viewport as two doubles — the default range is
-     * {@code -10, 10} — so a plot is a {@code Call} with two {@code Flt} arguments and the predicate,
-     * which walks every argument, marked <b>every plot ever drawn</b> approximate. The bounds are
-     * chrome: they say where the picture was cropped, not that the function is inexact. What is
-     * marked is the thing being graphed.
-     *
-     * <p>Worth stating rather than deleting: a marker that appears on something it does not describe
-     * costs more than a missing one, because it teaches the eye to stop reading it — and this rail is
-     * the argument for the whole state language.
-     */
-    static boolean markedInexact(Expr value) {
-        return PlotValue.isPlot(value) ? Exprs.containsInexact(PlotValue.body(value)) : Exprs.containsInexact(value);
     }
 
     /**
@@ -2476,10 +2465,47 @@ public final class CalcWindow {
         input.getStyleClass().add("echo-input");
         input.setContextMenu(inputMenu());
         HBox.setHgrow(input, Priority.ALWAYS);
-        HBox bar = new HBox(8, prompt, input);
+        echoNote.getStyleClass().add("echo-note");
+        echoNote.setVisible(false);
+        echoNote.setManaged(false);
+        // Cleared by the next keystroke, the way an echo area is: a message about what just happened
+        // stops being true the moment the user does something else.
+        input.textProperty().addListener((o, was, now) -> clearFlash());
+        HBox bar = new HBox(8, prompt, input, echoNote);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("echo-area");
         return bar;
+    }
+
+    /**
+     * Say something briefly, without writing it down.
+     *
+     * <p>The counterpart to recording a {@code Kind.NOTE} on the machine, and the distinction is
+     * the point. The trail records
+     * what happened to <b>the mathematics</b>: what was typed, what came back, what failed, and the
+     * machine notes {@code Kind.NOTE} was documented for — "a mode change, a stored variable". This
+     * reports what <b>the interface</b> just did: a selection, a copy, an export.
+     *
+     * <p>Selection is the case that forces the split. {@code select()} fires on every click on a
+     * subterm, so clicking around a formula to find the right piece wrote a line per click into a log
+     * whose stated value is being a plain-text record you can diff, hand-write or paste half of into
+     * a chat — and those lines are saved into the {@code .calc} file. In the reported window, four of
+     * the twelve visible trail lines were the calculator narrating clicks.
+     *
+     * <p>This is what the region is named for. Calcula calls its bottom line the echo area after
+     * Emacs, where that is exactly where a transient message goes; it simply never had one.
+     */
+    private void flash(String message) {
+        echoNote.setText(message);
+        echoNote.setVisible(true);
+        echoNote.setManaged(true);
+    }
+
+    private void clearFlash() {
+        if (echoNote.isVisible()) {
+            echoNote.setVisible(false);
+            echoNote.setManaged(false);
+        }
     }
 
     /**
@@ -2555,6 +2581,16 @@ public final class CalcWindow {
     /** Visible for tests: the stack as it is displayed. */
     public List<String> stackDisplay() {
         return read(() -> stack.stream().map(Formatter::format).toList());
+    }
+
+    /**
+     * Visible for tests: what the echo area is saying about itself, or "" when it is quiet.
+     *
+     * <p>Separate from {@link #trailContents()} on purpose, because the two are different claims:
+     * "the user was told" is this one, "it went into the record" is that one.
+     */
+    public String echoNote() {
+        return read(() -> echoNote.isVisible() ? echoNote.getText() : "");
     }
 
     /** Visible for tests: the trail as it is displayed, sigils included. */

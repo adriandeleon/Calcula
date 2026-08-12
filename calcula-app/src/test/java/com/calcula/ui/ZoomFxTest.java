@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Sizing the two text surfaces. */
 @Tag("fx")
@@ -71,12 +70,14 @@ class ZoomFxTest {
                 window.run("trail.zoomOut");
             }
         });
-        // The note goes through the worker, so it lands a beat after the press.
-        FxTestSupport.waitFor(
-                "the limit note", 5000, () -> window.trailContents().stream().anyMatch(l -> l.contains("smallest")));
+        FxTestSupport.waitFor("the limit note", 5000, () -> window.echoNote().contains("smallest"));
+
+        // The chatter this test was written to bound is now not in the log at all. Forty presses were
+        // worth one line there; they are worth none, because where the zoom stopped is not something
+        // that happened to the mathematics.
         String trail = String.join("\n", window.trailContents());
-        assertTrue(trail.contains("smallest"), "no word at the limit: " + trail);
-        assertEquals(1, trail.lines().filter(l -> l.contains("smallest")).count(), "one note per press: " + trail);
+        assertEquals(
+                0, trail.lines().filter(l -> l.contains("smallest")).count(), "no window chatter in the log: " + trail);
         FxTestSupport.runOnFx(window::dispose);
     }
 
