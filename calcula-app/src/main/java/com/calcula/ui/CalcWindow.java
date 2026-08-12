@@ -1506,7 +1506,7 @@ public final class CalcWindow {
                 // POLICY (symbolic, fractions); nothing reported the VALUE. One Flt anywhere in
                 // the tree contaminates it, so this is containsInexact and not !isExact — the
                 // latter is shallow and would mark every symbolic result approximate.
-                boolean inexact = Exprs.containsInexact(value);
+                boolean inexact = markedInexact(value);
 
                 // Always present, usually transparent: a value acquiring a marker must not shift
                 // the text beside it.
@@ -1522,6 +1522,10 @@ public final class CalcWindow {
                     gutter.getStyleClass().add("inexact");
                     index.getStyleClass().add("inexact");
                 }
+
+                // A picture rather than something set as mathematics. It has no baseline to sit the
+                // entry number on, which is why the two are aligned differently below.
+                boolean picture = PlotValue.isPlot(value) || GraphicsScene.isGraphics(value);
 
                 Region content = PlotValue.isPlot(value)
                         ? plotFor(value)
@@ -1541,8 +1545,15 @@ public final class CalcWindow {
                 // A rail in the BASELINE_LEFT box would vanish: a plain Region reports
                 // BASELINE_OFFSET_SAME_AS_HEIGHT, so it gets aligned by its own box and, with no
                 // content to give it height, draws nothing.
+                //
+                // A PLOT is that same trap one layer out. PlotCanvas is a plain Region too, so it
+                // also reports BASELINE_OFFSET_SAME_AS_HEIGHT — and a box told to align on the
+                // baseline therefore treats the BOTTOM of a 200px chart as the line to sit the entry
+                // number on, dropping "3:" to the foot of the plot. Faking a baseline on the canvas
+                // would be answering the wrong question: a picture genuinely has none, and a block is
+                // labelled at its top. So the alignment is chosen by what the row holds.
                 HBox formula = new HBox(10, index, content);
-                formula.setAlignment(Pos.BASELINE_LEFT);
+                formula.setAlignment(picture ? Pos.TOP_LEFT : Pos.BASELINE_LEFT);
                 HBox.setHgrow(formula, Priority.ALWAYS);
 
                 HBox row = new HBox(GUTTER_GAP, gutter, formula);
@@ -1965,6 +1976,24 @@ public final class CalcWindow {
      */
     static int stackGap(double mathSize) {
         return (int) Math.max(MIN_STACK_GAP, Math.round(mathSize * STACK_GAP_RATIO));
+    }
+
+    /**
+     * Whether a stack row wears the amber marker.
+     *
+     * <p>{@link Exprs#containsInexact} everywhere except a plot, where it answers the wrong question.
+     * {@code PlotValue.of} carries the viewport as two doubles — the default range is
+     * {@code -10, 10} — so a plot is a {@code Call} with two {@code Flt} arguments and the predicate,
+     * which walks every argument, marked <b>every plot ever drawn</b> approximate. The bounds are
+     * chrome: they say where the picture was cropped, not that the function is inexact. What is
+     * marked is the thing being graphed.
+     *
+     * <p>Worth stating rather than deleting: a marker that appears on something it does not describe
+     * costs more than a missing one, because it teaches the eye to stop reading it — and this rail is
+     * the argument for the whole state language.
+     */
+    static boolean markedInexact(Expr value) {
+        return PlotValue.isPlot(value) ? Exprs.containsInexact(PlotValue.body(value)) : Exprs.containsInexact(value);
     }
 
     /**
