@@ -48,6 +48,7 @@ import com.calcula.expr.ExprPath;
 import com.calcula.expr.Exprs;
 import com.calcula.input.AlgebraicReader;
 import com.calcula.input.Reader;
+import com.calcula.input.ReadlineKeys;
 import com.calcula.input.RpnReader;
 import com.calcula.key.KeyDispatcher;
 import com.calcula.key.Keymap;
@@ -770,6 +771,9 @@ public final class CalcWindow {
         if (handleCompletionAndHistory(event)) {
             return;
         }
+        if (handleReadline(event)) {
+            return;
+        }
         // While a prefix is held every key belongs to the dispatcher, including a bare letter that
         // would otherwise type. That is what makes the second half of C-x u or M-m r arrive at all.
         boolean continuing = dispatcher.hasPending();
@@ -1000,6 +1004,47 @@ public final class CalcWindow {
                 return false;
             }
         }
+    }
+
+    /**
+     * The readline editing keys, on the input line.
+     *
+     * <p>Ahead of the chord dispatcher, but after the completion popup — a visible popup owns the
+     * arrows, and {@code C-a} while it is up should still move the caret rather than being eaten.
+     *
+     * <p>Mid-chord the keyboard belongs to the dispatcher: {@code C-x C-e} must not lose its second
+     * half to {@code C-e}'s line-end, which is exactly the kind of collision that makes a prefix
+     * binding fail intermittently and inexplicably.
+     */
+    private boolean handleReadline(KeyEvent event) {
+        if (dispatcher.hasPending()) {
+            return false;
+        }
+        String chord = Chords.chordFor(event);
+        String action = chord == null ? null : ReadlineKeys.actionFor(chord);
+        if (action == null) {
+            return false;
+        }
+        ReadlineKeys.Edit edit = ReadlineKeys.apply(action, input.getText(), input.getCaretPosition());
+        if (edit == null) {
+            // Nothing to do — C-f at the end of the line. Consume anyway: the chord was ours, and
+            // letting it fall through would run whatever the calculator binds it to instead.
+            event.consume();
+            return true;
+        }
+        if (!edit.text().equals(input.getText())) {
+            input.setText(edit.text());
+        }
+        input.positionCaret(edit.caret());
+        if (edit.killed() != null) {
+            // Killed text goes on the system clipboard, so C-y is just paste. Emacs does the same
+            // thing by default, and it means the kill ring is one someone can also paste elsewhere.
+            ClipboardContent killed = new ClipboardContent();
+            killed.putString(edit.killed());
+            Clipboard.getSystemClipboard().setContent(killed);
+        }
+        event.consume();
+        return true;
     }
 
     /** Walk the history. {@code historyAt == history.size()} is the live line, below the oldest entry. */
@@ -1602,6 +1647,11 @@ public final class CalcWindow {
         // Where typing would have left it. setText alone leaves the caret at 0, so anything reading
         // the word BEFORE the caret would see an empty line.
         input.positionCaret(text.length());
+    }
+
+    /** Visible for tests: where the caret sits on the input line. */
+    public int caret() {
+        return input.getCaretPosition();
     }
 
     /** Visible for tests: what the input line currently holds. */

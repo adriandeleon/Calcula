@@ -88,6 +88,58 @@ class InputExperienceFxTest {
         FxTestSupport.runOnFx(window::dispose);
     }
 
+    // ------------------------------------------------------------------ readline
+
+    private static void chord(CalcWindow window, KeyCode code, boolean control, boolean alt) throws Exception {
+        javafx.scene.control.TextField input = (javafx.scene.control.TextField)
+                FxTestSupport.callOnFx(() -> window.getRoot().lookup(".echo-input"));
+        FxTestSupport.runOnFx(() -> javafx.event.Event.fireEvent(
+                input, new KeyEvent(KeyEvent.KEY_PRESSED, "", "", code, false, control, alt, false)));
+    }
+
+    @Test
+    void theReadlineKeysWorkOnTheInputLine() throws Exception {
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+        FxTestSupport.runOnFx(() -> window.type("sin(x)"));
+
+        chord(window, KeyCode.A, true, false); // C-a
+        assertEquals(0, FxTestSupport.callOnFx(window::caret));
+        chord(window, KeyCode.E, true, false); // C-e
+        assertEquals(6, FxTestSupport.callOnFx(window::caret));
+        chord(window, KeyCode.B, true, false); // C-b
+        assertEquals(5, FxTestSupport.callOnFx(window::caret));
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void killingToTheEndLeavesTheKilledTextWhereItCanBeYankedBack() throws Exception {
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+        FxTestSupport.runOnFx(() -> window.type("sin(x)"));
+        chord(window, KeyCode.A, true, false); // C-a
+        chord(window, KeyCode.K, true, false); // C-k
+        assertEquals("", FxTestSupport.callOnFx(window::typed));
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void aReadlineChordDoesNotStealTheSecondHalfOfAPrefix() throws Exception {
+        // No binding collides today — every C-x sequence takes a bare second key — but C-e is
+        // line-end, so the day one does, the prefix would fail intermittently and inexplicably.
+        // Guarded now rather than diagnosed later.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+        FxTestSupport.runOnFx(() -> window.type("abc"));
+        chord(window, KeyCode.A, true, false); // C-a, so the caret is somewhere observable
+        assertEquals(0, FxTestSupport.callOnFx(window::caret));
+
+        FxTestSupport.runOnFx(() -> window.press("C-x")); // a prefix is now pending
+        chord(window, KeyCode.E, true, false);
+        assertEquals(0, FxTestSupport.callOnFx(window::caret), "C-e moved the caret while a prefix was held");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
     // ------------------------------------------------------------------ completion
 
     @Test
