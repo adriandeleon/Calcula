@@ -63,10 +63,10 @@ the meaning drifts the first time one is tuned.
 |---|---|---|
 | **Ink** — what you said | `-color-fg-default` | Stack values, echo text, `Kind.INPUT` |
 | **Azure** — what came back | `-color-accent-fg` | `Kind.RESULT`, the prompt, selection, plot series 1 |
-| **Amber** — not exact, or not finished | `-calc-inexact` | Stack gutter, index, pending chord |
+| **Amber** — not exact, or not finished | `-calc-inexact` | Stack gutter, index, pending chord, held result |
 | **Vermilion** — why nothing came back | `-color-danger-fg` | `Kind.ERROR`, `CAS unavailable` |
 | **Verdigris** — the engine is here | `-color-success-fg` | Mode line CAS slot |
-| **Faint** — the calculator on itself | `-color-fg-subtle` | `Kind.NOTE`, mode flags, stack index |
+| **Faint** — the calculator on itself | `-color-fg-subtle` | `Kind.NOTE`, echo-area notes, mode flags, stack index |
 
 Vermilion never means "important" and never decorates a heading, so when it appears it is
 unambiguous. Verdigris has exactly one use: green is a poor accent and a good confirmation.
@@ -82,7 +82,8 @@ the value itself stays clean — the same division an editor makes between its g
 rail is *always present* and usually transparent, because adding it only when a marker applies would
 shift the text beside it by three pixels the moment a value changed.
 
-The predicate is `Exprs.containsInexact`, and it is **not** `!isExact`:
+The predicate lives in `RowMarker` — the cell asks a question rather than working one out — and the
+core of it is `Exprs.containsInexact`, which is **not** `!isExact`:
 
 ```java
 Exprs.isExact(x + 1)          // false — it is a Call, not an exact *number*
@@ -95,6 +96,26 @@ in the window. What the UI wants is contamination: one `Flt` buried anywhere in 
 value approximate, and nothing else does.
 
 The same amber marks a half-entered chord, because `C-x-` is likewise a value that has not settled.
+
+**Two things the rail learned later, both of which are the same idea applied properly.**
+
+*Not finished* was written into the meaning from the start and nothing was asking for it.
+`Hold(Fibonacci(100))` reached the stack in the same ink, at the same weight, with a transparent
+rail, sitting beside real answers — a failure wearing the costume of a result. It is marked now, and
+`RowMarker.explanation` says which name the engine handed back, because a rail that cannot be
+interrogated is a puzzle rather than a signal.
+
+Only `Hold` is detected, and that limit is deliberate. The engine distinguishes one of the two shapes
+of "nothing happened": it wraps `Fibonacci(100)`, but an unrecognised head passes through untouched —
+`Frobnicate(3)` comes back as `frobnicate(3)`, which is structurally identical to a perfectly good
+symbolic result. Marking on "did not reduce to a number" would paint the marker over most of what a
+CAS correctly returns, which is the `!isExact` mistake in a new coat.
+
+*A plot is judged by what it graphs.* `PlotValue.of` carries the viewport as two doubles, so a plot
+is a `Call` with two `Flt` arguments and the predicate — which walks every argument — marked **every
+plot ever drawn** approximate. The bounds say where the picture was cropped, not that the function is
+inexact. A marker that appears on something it does not describe teaches the eye to stop reading it,
+which costs more than a missing one.
 
 ---
 
@@ -142,14 +163,18 @@ agree character for character.
 
 ---
 
-## The four regions
+## The regions
 
 | Region | Face & size | Metrics | Behaviour |
 |---|---|---|---|
-| **Trail** | JetBrains Mono 11 | 1 / 10 padding | Sigil column so `=` and `!` align. Scrolls to the tail on every publish. 28 % of the split, not resizable with the parent. |
-| **Stack** | `MathLayout`, 17 pt | 3 px rail + 8 px gap, 38 px index, 10 px gap | Bottom-aligned, so entry `1:` sits against the echo area. Two nested boxes: the rail fills height, the formula aligns on its baseline. Renumbers whole-list on any change. |
+| **Trail** | JetBrains Mono 11 | 1 / 10 padding | Sigil and text in separate boxes, so `=` and `!` keep a column *and* a wrapped line resumes under the text. Scrolls to the tail on every publish. 28 % of the split, not resizable with the parent. |
+| **Stack** | `MathLayout`, 17 pt | 3 px rail + 8 px gap, 38 px index, 10 px gap | Bottom-aligned, so entry `1:` sits against the echo area. Two nested boxes: the rail fills height, and a formula aligns on its baseline while a *picture* aligns to its top — a chart has no baseline, and a block is labelled at its top. Renumbers whole-list on any change. |
 | **Mode line** | Inter 11 | 4 / 12 padding, hairline both edges | Modes left, CAS right. An *off* flag is omitted, not greyed — Calc's own convention, and it keeps the strip short. |
-| **Echo area** | JetBrains Mono 14 | 8 / 12 / 10 padding | No border, no focus ring, transparent ground: a line of the page, not a widget on it. |
+| **Echo area** | JetBrains Mono 14 | 8 / 12 / 10 padding | No border, no focus ring, transparent ground: a line of the page, not a widget on it. Carries transient notes at its right-hand end — what the *interface* just did, as against what happened to the mathematics. |
+| **Preview** | `MathLayout`, follows the stack | 4 / 12 / 0 / 26 padding | The line being typed, set as mathematics directly above it. Parses, never evaluates. Unmanaged when quiet, so a blank line costs no height. |
+
+The preview is a fifth region only in the sense that it occupies its own strip; it is part of the
+echo area's job, which is the line you are working on rather than the record of what you have done.
 
 Densities differ on purpose. The stack is read by scanning down a column of values, so its rows are
 loose; the trail is skimmed for a landmark and then read backwards, so it is tight. Two jobs, two
