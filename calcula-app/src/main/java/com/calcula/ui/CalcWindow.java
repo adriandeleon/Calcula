@@ -97,6 +97,17 @@ public final class CalcWindow {
     /** Point size for rendered stack entries, from settings. */
     private double mathSize = Settings.DEFAULTS.mathSize();
 
+    private double trailSize = Settings.DEFAULTS.trailSize();
+
+    /**
+     * The cell style, rebuilt only when the size changes.
+     *
+     * <p>Applied per cell rather than to the list, because {@code .trail-view .list-cell} names a size
+     * and a rule beats an inherited value however the ancestor is styled — the obvious inline style on
+     * the ListView does nothing at all.
+     */
+    private String trailCellStyle = "";
+
     /** A plot on the stack is a thumbnail; it is still fully interactive. */
     private static final double STACK_PLOT_WIDTH = 360;
 
@@ -213,6 +224,7 @@ public final class CalcWindow {
     public CalcWindow() {
         settings = settingsStore.load();
         mathSize = settings.mathSize();
+        applyTrailSize(settings.trailSize());
         reader = settings.isRpn() ? new RpnReader() : new AlgebraicReader();
         // The saved modes are where a NEW session starts. They are seeded into the machine's initial
         // state rather than pushed as an operation, so the first thing in the undo history is the
@@ -245,9 +257,11 @@ public final class CalcWindow {
         // top of the window there and the first row of it everywhere else.
         root.setTop(new VBox(menuBar.node(), buildToolBar()));
 
-        SplitPane split = new SplitPane(trailView, stackView);
+        VBox trailPane = new VBox(buildTrailBar(), trailView);
+        VBox.setVgrow(trailView, Priority.ALWAYS);
+        SplitPane split = new SplitPane(trailPane, stackView);
         split.setDividerPositions(0.28);
-        SplitPane.setResizableWithParent(trailView, Boolean.FALSE);
+        SplitPane.setResizableWithParent(trailPane, Boolean.FALSE);
 
         root.setCenter(split);
         root.setBottom(new VBox(buildModeLine(), buildEchoArea()));
@@ -297,6 +311,9 @@ public final class CalcWindow {
         if (updated.mathSize() != mathSize) {
             mathSize = updated.mathSize();
             stackView.refresh();
+        }
+        if (updated.trailSize() != trailSize) {
+            applyTrailSize(updated.trailSize());
         }
         boolean wantRpn = updated.isRpn();
         if (wantRpn != reader instanceof RpnReader) {
@@ -366,6 +383,12 @@ public final class CalcWindow {
     }
 
     public void dispose() {
+        // Flush a pending size: quitting within the debounce window would otherwise throw away the
+        // adjustment the user just made, which is exactly when they made it.
+        if (sizeSave.getStatus() == javafx.animation.Animation.Status.RUNNING) {
+            sizeSave.stop();
+            settingsStore.save(settings);
+        }
         worker.shutdownNow();
         engine.close();
     }
@@ -419,6 +442,50 @@ public final class CalcWindow {
      * which is the same rule every other command follows.
      */
     private void registerApplicationCommands() {
+        registry.register(
+                "trail.zoomIn",
+                "Larger trail text",
+                "Increase the trail's point size",
+                () -> zoom(
+                        "Trail text",
+                        trailSize,
+                        ZOOM_STEP,
+                        Settings.MIN_TRAIL_SIZE,
+                        Settings.MAX_TRAIL_SIZE,
+                        this::applyTrailSize));
+        registry.register(
+                "trail.zoomOut",
+                "Smaller trail text",
+                "Decrease the trail's point size",
+                () -> zoom(
+                        "Trail text",
+                        trailSize,
+                        -ZOOM_STEP,
+                        Settings.MIN_TRAIL_SIZE,
+                        Settings.MAX_TRAIL_SIZE,
+                        this::applyTrailSize));
+        registry.register(
+                "stack.zoomIn",
+                "Larger stack text",
+                "Increase the size formulas are typeset at",
+                () -> zoom(
+                        "Stack text",
+                        mathSize,
+                        ZOOM_STEP,
+                        Settings.MIN_MATH_SIZE,
+                        Settings.MAX_MATH_SIZE,
+                        this::applyMathSize));
+        registry.register(
+                "stack.zoomOut",
+                "Smaller stack text",
+                "Decrease the size formulas are typeset at",
+                () -> zoom(
+                        "Stack text",
+                        mathSize,
+                        -ZOOM_STEP,
+                        Settings.MIN_MATH_SIZE,
+                        Settings.MAX_MATH_SIZE,
+                        this::applyMathSize));
         registry.register("app.palette", "Commands…", "Search every command by name", palette::show);
         registry.register("app.settings", "Settings…", "Preferences a new session starts from", settingsDialog::show);
         registry.register("app.quit", "Quit", "Close Calcula", () -> javafx.application.Platform.exit());
@@ -822,6 +889,19 @@ public final class CalcWindow {
         keymap.bind("M-m f", "mode.fractions");
         // M-x for the palette, as in Emacs. Both spellings of the settings chord, since Chords emits
         // Cmd- on macOS and C- everywhere else, and , is where every platform puts preferences.
+        // Zoom, on the chords every application uses. Bound for the STACK: it is the surface being
+        // looked at, and the trail has its own two buttons a few pixels from the text they resize.
+        //
+        // Several spellings for one gesture, because Ctrl-+ is not a key. The plus is Shift-Equals on
+        // most layouts, its own key on a numeric pad, and macOS reports Cmd-+ as Cmd-Shift-Equals — so
+        // binding only the obvious one leaves it working on whichever keyboard it was written on.
+        for (String zoomIn :
+                List.of("C-Equals", "C-S-Equals", "C-Plus", "C-Add", "Cmd-Equals", "Cmd-S-Equals", "Cmd-Plus")) {
+            keymap.bind(zoomIn, "stack.zoomIn");
+        }
+        for (String zoomOut : List.of("C-Minus", "C-Subtract", "Cmd-Minus")) {
+            keymap.bind(zoomOut, "stack.zoomOut");
+        }
         keymap.bind("M-x", "app.palette");
         keymap.bind("C-,", "app.settings");
         keymap.bind("Cmd-,", "app.settings");
@@ -1570,6 +1650,111 @@ public final class CalcWindow {
         return hint;
     }
 
+    /**
+     * The trail's own header: what it is, and two buttons to size it.
+     *
+     * <p>The trail is a log, and how big a log wants to be is a matter of what you are doing with it —
+     * scanning back over a long session wants it small, reading a result off it wants it large. That is
+     * a different question from how big the working stack should be, so it gets its own control rather
+     * than following the stack's size.
+     */
+    private Region buildTrailBar() {
+        Label title = new Label("Trail");
+        title.getStyleClass().add("trail-bar-title");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        HBox bar = new HBox(
+                title,
+                spacer,
+                zoomButton("zoomOut", "trail.zoomOut", "Smaller trail text"),
+                zoomButton("zoomIn", "trail.zoomIn", "Larger trail text"));
+        bar.setAlignment(Pos.CENTER_LEFT);
+        bar.getStyleClass().add("trail-zoom");
+        return bar;
+    }
+
+    private javafx.scene.control.Button zoomButton(String glyph, String commandId, String description) {
+        javafx.scene.control.Button button = new javafx.scene.control.Button();
+        button.setGraphic(Icons.of(glyph));
+        button.setFocusTraversable(false); // Tab belongs to the input line, not to the chrome
+        String chord = chordFor(commandId);
+        button.setTooltip(new Tooltip(chord.isBlank() ? description : description + "   (" + chord + ")"));
+        button.setOnAction(e -> runCommand(commandId));
+        return button;
+    }
+
+    /**
+     * Change a size by a step, clamped and saved.
+     *
+     * <p>One helper for both surfaces: the arithmetic and the "already at the limit" case are the same
+     * whichever size is being nudged, and the only thing that differs is where the value lands.
+     *
+     * <p><b>Silent when it works.</b> The text changing size IS the feedback, and the only channel for
+     * a message here is the trail — which is the log of the calculation, not of the window. Two presses
+     * of a zoom button put two lines of "Trail text 13 point" in among the results, which is noise in
+     * the one place that should be nothing but arithmetic. Reaching the limit is different: nothing
+     * happens on screen, so the press needs an answer.
+     */
+    private void zoom(
+            String what, double current, double step, double min, double max, java.util.function.DoubleConsumer apply) {
+        double next = Math.clamp(current + step, min, max);
+        if (next == current) {
+            String message = what + " is already at its " + (step > 0 ? "largest" : "smallest");
+            if (!message.equals(zoomLimitSaid)) {
+                zoomLimitSaid = message;
+                noteFromFx(message);
+            }
+            return;
+        }
+        zoomLimitSaid = null;
+        apply.accept(next);
+    }
+
+    /** One point per press: a size control that jumps is one you have to fight back to where it was. */
+    private static final double ZOOM_STEP = 1;
+
+    /**
+     * Writing the size to disk, once the presses stop.
+     *
+     * <p>A zoom chord auto-repeats while it is held, so saving inside the step would rewrite
+     * settings.properties dozens of times a second — each an atomic temp-file-and-move, for a value
+     * that is about to change again. The last one is the only one that matters.
+     */
+    private final javafx.animation.PauseTransition sizeSave =
+            new javafx.animation.PauseTransition(javafx.util.Duration.millis(400));
+
+    /**
+     * The limit message already said, so holding the chord does not repeat it.
+     *
+     * <p>A zoom chord auto-repeats, and at the limit every repeat produces the same sentence — thirty
+     * copies of "already at its smallest" down the trail, which buries the calculation under the
+     * complaint. Cleared by any zoom that moves, so hitting the limit again does say so again.
+     */
+    private String zoomLimitSaid;
+
+    private void applyMathSize(double size) {
+        mathSize = size;
+        stackView.refresh();
+        saveLater(settings.withMathSize(size));
+    }
+
+    private void applyTrailSize(double size) {
+        trailSize = size;
+        trailCellStyle = "-fx-font-size: " + Math.round(size) + "px;";
+        // The cells are recycled, so a refresh is what re-runs updateItem and applies the new style.
+        // Nothing else is re-laid-out, which is why this is cheap enough for a held-down button.
+        trailView.refresh();
+        saveLater(settings.withTrailSize(size));
+    }
+
+    /** Hold the new preferences now, write them when the presses stop. */
+    private void saveLater(Settings updated) {
+        settings = updated;
+        sizeSave.setOnFinished(e -> settingsStore.save(settings));
+        sizeSave.playFromStart();
+    }
+
     private void buildTrail() {
         trailView.getStyleClass().add("trail-view");
         trailView.setPlaceholder(trailHint());
@@ -1586,6 +1771,7 @@ public final class CalcWindow {
                     return;
                 }
                 setText(renderTrail(entry));
+                setStyle(trailCellStyle);
                 getStyleClass().add(trailCellClass(entry));
                 setOnContextMenuRequested(e -> {
                     trailMenu(entry).show(this, e.getScreenX(), e.getScreenY());

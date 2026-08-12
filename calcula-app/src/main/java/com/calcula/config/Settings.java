@@ -18,20 +18,25 @@ import com.calcula.machine.Modes;
  * @param inputModel {@code algebraic} or {@code rpn}
  * @param modes the angle unit, precision and so on that a new session begins with
  * @param mathSize point size for typeset stack entries
+ * @param trailSize point size for the trail, sized separately because it is a log rather than the
+ *     working surface — people keep it small to see more of it, or large to actually read it
  */
-public record Settings(String themeId, String inputModel, Modes modes, double mathSize) {
+public record Settings(String themeId, String inputModel, Modes modes, double mathSize, double trailSize) {
 
     /**
      * Bumped whenever the shape changes, so an older build never silently reinterprets a newer file.
      * A file claiming a higher version is set aside rather than parsed — see {@link SettingsStore}.
      */
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 2;
 
     public static final String ALGEBRAIC = "algebraic";
     public static final String RPN = "rpn";
 
     public static final double MIN_MATH_SIZE = 9;
     public static final double MAX_MATH_SIZE = 48;
+
+    public static final double MIN_TRAIL_SIZE = 8;
+    public static final double MAX_TRAIL_SIZE = 32;
 
     /**
      * Algebraic entry, because it is the gentler of the two to meet first.
@@ -40,7 +45,7 @@ public record Settings(String themeId, String inputModel, Modes modes, double ma
      * preference rather than a hardcoded choice, which is the honest resolution: the two readers are
      * equally supported, and which one someone wants is not something the program can know.
      */
-    public static final Settings DEFAULTS = new Settings("slab", ALGEBRAIC, Modes.DEFAULTS, 17);
+    public static final Settings DEFAULTS = new Settings("slab", ALGEBRAIC, Modes.DEFAULTS, 17, 11);
 
     public Settings {
         themeId = themeId == null || themeId.isBlank() ? DEFAULTS_THEME : themeId.trim();
@@ -49,6 +54,7 @@ public record Settings(String themeId, String inputModel, Modes modes, double ma
         // Clamped rather than rejected: a hand-edited settings file should not stop the app opening,
         // and a 500-point stack entry is indistinguishable from a broken window.
         mathSize = Math.clamp(mathSize, MIN_MATH_SIZE, MAX_MATH_SIZE);
+        trailSize = Math.clamp(trailSize, MIN_TRAIL_SIZE, MAX_TRAIL_SIZE);
     }
 
     private static final String DEFAULTS_THEME = "slab";
@@ -58,18 +64,22 @@ public record Settings(String themeId, String inputModel, Modes modes, double ma
     }
 
     public Settings withTheme(String id) {
-        return new Settings(id, inputModel, modes, mathSize);
+        return new Settings(id, inputModel, modes, mathSize, trailSize);
     }
 
     public Settings withInputModel(String model) {
-        return new Settings(themeId, model, modes, mathSize);
+        return new Settings(themeId, model, modes, mathSize, trailSize);
     }
 
     public Settings withModes(Modes newModes) {
-        return new Settings(themeId, inputModel, newModes, mathSize);
+        return new Settings(themeId, inputModel, newModes, mathSize, trailSize);
     }
 
     public Settings withMathSize(double size) {
-        return new Settings(themeId, inputModel, modes, size);
+        return new Settings(themeId, inputModel, modes, size, trailSize);
+    }
+
+    public Settings withTrailSize(double size) {
+        return new Settings(themeId, inputModel, modes, mathSize, size);
     }
 }

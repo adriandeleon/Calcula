@@ -72,6 +72,34 @@ class SurfaceSampleFxTest {
     }
 
     @Test
+    void theTrailAndItsZoomButtonsRender() throws Exception {
+        // The trail bar is two 16-unit glyphs in a pane that is a quarter of the window. Whether they
+        // are legible at that size is not something a structural test can answer.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        Region root = window.getRoot();
+        FxTestSupport.runOnFx(() -> {
+            Scene scene = new Scene(root, 980, 660);
+            Themes.apply(scene, Themes.byName(window.settings().themeId()));
+            root.applyCss();
+            root.layout();
+            window.submit("integrate(x*sin(x), x)");
+        });
+        FxTestSupport.waitFor("the entry", 5000, () -> !window.stackContents().isEmpty());
+        FxTestSupport.runOnFx(() -> {
+            window.submit("1/3 + 1/6");
+            window.run("trail.zoomIn");
+            window.run("trail.zoomIn");
+            root.applyCss();
+            root.layout();
+        });
+        WritableImage image = FxTestSupport.callOnFx(() -> root.snapshot(new SnapshotParameters(), null));
+        javax.imageio.ImageIO.write(
+                javafx.embed.swing.SwingFXUtils.fromFXImage(image, null), "png", new File("target/trail-sample.png"));
+        System.out.println("WROTE target/trail-sample.png");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
     void theFunctionSheetRenders() throws Exception {
         snapshot("functions-sample.png", "help.functions");
     }

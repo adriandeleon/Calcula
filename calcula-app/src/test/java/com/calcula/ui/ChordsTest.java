@@ -79,4 +79,14 @@ class ChordsTest {
         assertEquals("C-x", Chords.chordFor(key(KeyCode.X, true, false, false, false)));
         assertEquals("C-M-TAB", Chords.chordFor(key(KeyCode.TAB, true, true, false, false)));
     }
+
+    @Test
+    void theZoomKeysProduceTheChordsTheBindingsUse() {
+        // A binding is a string, so a KeyCode whose name is not what the binding says is a shortcut
+        // that silently does nothing. These four are the ones the zoom commands are bound to.
+        assertEquals("C-Equals", Chords.chordFor(key(KeyCode.EQUALS, true, false, false, false)));
+        assertEquals("C-Minus", Chords.chordFor(key(KeyCode.MINUS, true, false, false, false)));
+        assertEquals("C-S-Equals", Chords.chordFor(key(KeyCode.EQUALS, true, false, true, false)));
+        assertEquals("Cmd-Minus", Chords.chordFor(key(KeyCode.MINUS, false, false, false, true)));
+    }
 }

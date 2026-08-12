@@ -73,7 +73,10 @@ public final class SettingsStore {
                 props.getProperty("theme", d.themeId()),
                 props.getProperty("inputModel", d.inputModel()),
                 modes,
-                readDouble(props, "mathSize", d.mathSize()));
+                readDouble(props, "mathSize", d.mathSize()),
+                // Absent in a schema-1 file, which is the whole migration: an added scalar reads as
+                // its default, so there is nothing to convert.
+                readDouble(props, "trailSize", d.trailSize()));
     }
 
     /**
@@ -92,6 +95,7 @@ public final class SettingsStore {
         props.setProperty("modes.symbolic", Boolean.toString(settings.modes().symbolic()));
         props.setProperty("modes.fractions", Boolean.toString(settings.modes().fractions()));
         props.setProperty("mathSize", Double.toString(settings.mathSize()));
+        props.setProperty("trailSize", Double.toString(settings.trailSize()));
         try {
             Files.createDirectories(file.getParent());
             Path temp = file.resolveSibling(FILE_NAME + ".tmp");
