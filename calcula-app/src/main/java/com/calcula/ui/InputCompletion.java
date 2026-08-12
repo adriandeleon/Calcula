@@ -32,11 +32,35 @@ public final class InputCompletion {
 
     private static final int MAX_ROWS = 8;
     private static final double ROW_HEIGHT = 24;
-    private static final double WIDTH = 380;
+
+    /** Narrow enough not to loom over a short name; the content decides the rest. */
+    private static final double MIN_WIDTH = 320;
+
+    /** Wide enough for the longest entry, short of becoming a second window. */
+    private static final double MAX_WIDTH = 760;
+
+    /**
+     * Room for the vertical scrollbar.
+     *
+     * <p>Without it the list is sized to exactly fit its widest row, the scrollbar then takes some of
+     * that width away, and the row no longer fits — so avoiding the VERTICAL scrollbar's width is what
+     * causes the HORIZONTAL one.
+     */
+    private static final double SCROLLBAR_ALLOWANCE = 18;
 
     private final TextField input;
     private final Popup popup = new Popup();
     private final ListView<Functions.Doc> list = new ListView<>();
+
+    /**
+     * An off-list copy of a row, used only to measure.
+     *
+     * <p>It has to live in the popup's scene graph — unmanaged and invisible, so it takes part in no
+     * layout — because a node outside a scene gets no CSS, and without CSS its labels have the default
+     * font rather than the mono and small faces the real rows use. Measuring with the wrong fonts is
+     * how you arrive at a width that is confidently wrong.
+     */
+    private final RowView measurer = new RowView();
 
     /**
      * What the last {@link #update()} decided to offer.
@@ -51,10 +75,16 @@ public final class InputCompletion {
         this.input = input;
         list.setCellFactory(v -> new Row());
         list.setFixedCellSize(ROW_HEIGHT);
-        list.setPrefWidth(WIDTH);
+        list.setPrefWidth(MIN_WIDTH); // replaced per update by widthFor
         list.getStyleClass().add("completion-list");
         list.setFocusTraversable(false);
-        popup.getContent().add(list);
+        // The measurer rides along in the popup's content so it inherits the stylesheets. Unmanaged,
+        // so it contributes nothing to layout, and invisible so it draws nothing.
+        measurer.node.setManaged(false);
+        measurer.node.setVisible(false);
+        javafx.scene.layout.StackPane holder = new javafx.scene.layout.StackPane(list, measurer.node);
+        holder.setPickOnBounds(false);
+        popup.getContent().add(holder);
         popup.setAutoHide(true);
         // Inherits the window's stylesheets, so it is themed like everything else.
         popup.setAutoFix(true);
@@ -62,6 +92,11 @@ public final class InputCompletion {
 
     public boolean isShowing() {
         return popup.isShowing();
+    }
+
+    /** Visible for tests: the width last computed for the popup. */
+    public double width() {
+        return list.getPrefWidth();
     }
 
     /** What is currently on offer, whether or not a window exists to draw it in. */
@@ -93,11 +128,35 @@ public final class InputCompletion {
         list.getSelectionModel().select(0);
         list.setPrefHeight(Math.min(hits.size(), MAX_ROWS) * ROW_HEIGHT + 2);
         show();
+        // AFTER show, and it has to be: a Popup's content inherits the owner window's stylesheets only
+        // once it is shown, so measuring before that measures unstyled labels — default face instead
+        // of the mono signature — and the first popup of a session would be the one sized wrongly.
+        // Widening afterwards costs no reposition, since the popup is anchored at the field's left.
+        list.setPrefWidth(widthFor(hits));
     }
 
     public void hide() {
         candidates = List.of();
         popup.hide();
+    }
+
+    /**
+     * Wide enough for the widest entry on offer, so nothing is clipped and no horizontal scrollbar
+     * appears.
+     *
+     * <p>Measures EVERY candidate rather than the visible ones: the list scrolls, and sizing to the
+     * first eight rows means the scrollbar appears the moment you reach a longer one — which is worse
+     * than having it all along, because it moves.
+     */
+    private double widthFor(List<Functions.Doc> hits) {
+        measurer.node.applyCss(); // fonts come from CSS, and CSS has not necessarily been applied yet
+        double widest = 0;
+        for (Functions.Doc doc : hits) {
+            measurer.show(doc);
+            measurer.node.applyCss();
+            widest = Math.max(widest, measurer.node.prefWidth(-1));
+        }
+        return Math.clamp(widest + SCROLLBAR_ALLOWANCE, MIN_WIDTH, MAX_WIDTH);
     }
 
     /** Move the highlight. Returns false when nothing is showing, so the caller can do something else. */
@@ -160,22 +219,43 @@ public final class InputCompletion {
         popup.show(input, bounds.getMinX(), bounds.getMinY() - height - 4);
     }
 
-    /** Name on the left, signature and summary alongside. */
-    private static final class Row extends ListCell<Functions.Doc> {
+    /**
+     * One row's layout: name, signature, then the summary pushed right.
+     *
+     * <p>Shared by the cell and the measurer, so the thing being measured is the thing being drawn.
+     * Two definitions of a row is two widths, and the wrong one wins silently.
+     */
+    private static final class RowView {
         private final Label name = new Label();
         private final Label signature = new Label();
         private final Label summary = new Label();
-        private final HBox layout;
+        private final HBox node;
 
-        Row() {
+        RowView() {
             name.getStyleClass().add("completion-name");
             signature.getStyleClass().add("completion-signature");
             summary.getStyleClass().add("completion-summary");
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
-            layout = new HBox(8, name, signature, spacer, summary);
-            layout.getStyleClass().add("completion-row");
+            // Nothing ellipsizes: the popup is sized to fit instead. A row that shortened itself would
+            // hide the summary, which is the column carrying the answer to "which one do I want".
+            for (Label label : List.of(name, signature, summary)) {
+                label.setMinWidth(Region.USE_PREF_SIZE);
+            }
+            node = new HBox(8, name, signature, spacer, summary);
+            node.getStyleClass().add("completion-row");
         }
+
+        void show(Functions.Doc doc) {
+            name.setText(doc.name());
+            // The signature only adds something when it says more than the name already did.
+            signature.setText(doc.signature().equals(doc.name()) ? "" : doc.signature());
+            summary.setText(doc.summary());
+        }
+    }
+
+    private static final class Row extends ListCell<Functions.Doc> {
+        private final RowView view = new RowView();
 
         @Override
         protected void updateItem(Functions.Doc item, boolean empty) {
@@ -184,11 +264,8 @@ public final class InputCompletion {
                 setGraphic(null);
                 return;
             }
-            name.setText(item.name());
-            // The signature only adds something when it says more than the name already did.
-            signature.setText(item.signature().equals(item.name()) ? "" : item.signature());
-            summary.setText(item.summary());
-            setGraphic(layout);
+            view.show(item);
+            setGraphic(view.node);
         }
     }
 }

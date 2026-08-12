@@ -1624,6 +1624,11 @@ public final class CalcWindow {
         return completion.isShowing();
     }
 
+    /** Visible for tests: the width the completion popup sized itself to. */
+    public double completionWidth() {
+        return completion.width();
+    }
+
     /** Visible for tests: the names currently on offer. A headless scene has no Window to draw in. */
     public List<String> completionCandidates() {
         return completion.candidates().stream()

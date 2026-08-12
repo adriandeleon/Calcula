@@ -124,6 +124,34 @@ class InputExperienceFxTest {
         FxTestSupport.runOnFx(window::dispose);
     }
 
+    @Test
+    void thePopupWidensToFitWhatItIsOfferingRatherThanClipping() throws Exception {
+        // It was a fixed 380px, so the summary column was cut off behind a horizontal scrollbar —
+        // and the summary is the column that answers "which one of these do I want".
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+
+        FxTestSupport.runOnFx(() -> window.type("s"));
+        double many = FxTestSupport.callOnFx(window::completionWidth);
+        assertTrue(many >= 320, "narrower than the floor: " + many);
+        assertTrue(many <= 760, "wider than the ceiling: " + many);
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void aLongerEntryGetsAWiderPopupThanAShortOne() throws Exception {
+        // The mechanism, independent of the exact fonts: width follows content.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.realize(window.getRoot());
+
+        FxTestSupport.runOnFx(() -> window.type("Coeff"));
+        double longEntry = FxTestSupport.callOnFx(window::completionWidth);
+        FxTestSupport.runOnFx(() -> window.type("re"));
+        double shortEntry = FxTestSupport.callOnFx(window::completionWidth);
+        assertTrue(longEntry >= shortEntry, longEntry + " should be at least " + shortEntry);
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
     // ------------------------------------------------------------------ subterms
 
     @Test
