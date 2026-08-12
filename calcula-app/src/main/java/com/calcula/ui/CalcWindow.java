@@ -238,7 +238,9 @@ public final class CalcWindow {
         // AFTER both: the menu is generated from what is registered and what is bound, so it can only
         // be built once there is something to read.
         menuBar = new CommandMenuBar(registry.all(), keymap.invert(), this::runCommand);
-        root.setTop(menuBar.node());
+        // On macOS the menu bar is the SYSTEM menu bar and draws nothing here, so the toolbar is the
+        // top of the window there and the first row of it everywhere else.
+        root.setTop(new VBox(menuBar.node(), buildToolBar()));
 
         SplitPane split = new SplitPane(trailView, stackView);
         split.setDividerPositions(0.28);
@@ -1487,15 +1489,41 @@ public final class CalcWindow {
      * that a thing EXISTS — not to become the way to reach it. Someone who uses one repeatedly is
      * being told, every time, the key that would have been quicker.
      */
-    private javafx.scene.control.Button chromeButton(String glyph, String commandId, String description) {
-        javafx.scene.control.Button button = new javafx.scene.control.Button();
+    private javafx.scene.control.Button chromeButton(String glyph, String label, String commandId, String description) {
+        javafx.scene.control.Button button = new javafx.scene.control.Button(label);
         button.setGraphic(Icons.of(glyph));
         button.getStyleClass().add("chrome-button");
         button.setFocusTraversable(false); // Tab belongs to the input line
+        // An HBox that overflows squeezes EVERY child from its preferred width towards its minimum,
+        // and a Button's minimum is its ellipsis — so a narrow window would turn the whole toolbar
+        // into a row of dots rather than dropping anything. Pinned, so it clips instead.
+        button.setMinWidth(Region.USE_PREF_SIZE);
         String chord = chordFor(commandId);
         button.setTooltip(new Tooltip(chord.isBlank() ? description : description + "   (" + chord + ")"));
         button.setOnAction(e -> runCommand(commandId));
         return button;
+    }
+
+    /**
+     * The toolbar: the four things that are worth a label.
+     *
+     * <p>Labelled rather than icon-only, because an icon alone is a guess — and these are exactly the
+     * surfaces someone reaches for when they do not yet know what the application can do, which is the
+     * worst moment to make them hover four unfamiliar glyphs to find out.
+     *
+     * <p>Each still names its chord in its tooltip. The toolbar says a thing exists; the tooltip says
+     * how to reach it faster next time.
+     */
+    private Region buildToolBar() {
+        HBox bar = new HBox(
+                6,
+                chromeButton("palette", "Commands", "app.palette", "Every command, searchable"),
+                chromeButton("functions", "Functions", "help.functions", "Every function, with what it does"),
+                chromeButton("settings", "Settings", "app.settings", "Settings"),
+                chromeButton("about", "About", "help.about", "About Calcula"));
+        bar.setAlignment(Pos.CENTER_LEFT);
+        bar.getStyleClass().add("toolbar");
+        return bar;
     }
 
     private Region buildModeLine() {
@@ -1515,15 +1543,7 @@ public final class CalcWindow {
         StackPane busySlot = new StackPane(busy);
         busySlot.setMinWidth(70);
         busySlot.setPrefWidth(70);
-        HBox chrome = new HBox(
-                chromeButton("palette", "app.palette", "Every command, searchable"),
-                chromeButton("functions", "help.functions", "Every function, with what it does"),
-                chromeButton("settings", "app.settings", "Settings"),
-                chromeButton("about", "help.about", "About Calcula"));
-        chrome.getStyleClass().add("chrome-bar");
-        chrome.setAlignment(Pos.CENTER);
-
-        HBox bar = new HBox(modes, spacer, busySlot, engineStatus, chrome);
+        HBox bar = new HBox(modes, spacer, busySlot, engineStatus);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("mode-line");
         return bar;

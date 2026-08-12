@@ -4,8 +4,8 @@ A keyboard-driven symbolic calculator in the spirit of Emacs Calc. JDK 25 + Java
 (JPMS, module `com.calcula`).
 
 The stack is a document, not a display: trail, stack, mode line, echo area. Input is keystrokes with
-prefix dispatch; the only buttons are four chrome glyphs in the mode line, and each names its own
-chord in its tooltip.
+prefix dispatch; the only buttons are four labelled toolbar entries, and each names its own chord in
+its tooltip.
 
 ## Commands
 
@@ -257,10 +257,16 @@ while 340 structural tests stayed green.
 
 ### Saying what is there
 
-Four outline glyphs sit at the right of the mode line — palette, function reference, settings, about
-— and every one of them shows its **chord** in its tooltip. That is what makes them allowable in a
-keyboard-driven application: they say a thing EXISTS, and tell you the key that reaches it faster.
-Everything a calculator actually does stays on the keyboard, the palette and the menu.
+A toolbar under the menu bar: **Commands**, **Functions**, **Settings**, **About** — each an outline
+glyph beside its label, and each naming its **chord** in its tooltip. That is what makes them
+allowable in a keyboard-driven application: they say a thing EXISTS, and tell you the key that
+reaches it faster. Everything a calculator actually does stays on the keyboard, the palette and the
+menu.
+
+Labelled rather than icon-only, because an icon alone is a guess — and these are exactly the surfaces
+someone reaches for when they do not yet know what the application can do, which is the worst moment
+to make them hover four unfamiliar glyphs to find out. On macOS the menu bar is the system menu bar,
+so the toolbar is the top of the window there.
 
 `ui.Icons` follows the same rules as Dicta's set: a 16-unit grid, **stroked rather than filled** so a
 glyph tracks the palette and its button's state through `-fx-stroke` with no per-icon colour in Java,

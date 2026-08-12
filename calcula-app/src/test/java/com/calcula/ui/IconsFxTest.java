@@ -96,6 +96,38 @@ class IconsFxTest {
     }
 
     @Test
+    void everyToolbarButtonIsLabelledAsWellAsDrawn() throws Exception {
+        // Icon-only is a guess, and these are exactly the surfaces someone reaches for when they do
+        // not yet know what the application can do — the worst moment to make them hover four
+        // unfamiliar glyphs to find out.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        Region root = window.getRoot();
+        FxTestSupport.realize(root);
+        for (Node node : FxTestSupport.callOnFx(() -> root.lookupAll(".chrome-button"))) {
+            Button button = (Button) node;
+            assertFalse(button.getText() == null || button.getText().isBlank(), "an unlabelled toolbar button");
+        }
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void theToolbarSitsAtTheTopOfTheWindow() throws Exception {
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        Region root = window.getRoot();
+        FxTestSupport.realize(root);
+        Node toolbar = FxTestSupport.callOnFx(() -> root.lookup(".toolbar"));
+        assertNotNull(toolbar, "no toolbar was built");
+        // Above the stack, which is the whole point of moving it out of the mode line.
+        double toolbarY = FxTestSupport.callOnFx(() -> toolbar.localToScene(toolbar.getBoundsInLocal()).getMinY());
+        double stackY = FxTestSupport.callOnFx(() -> {
+            Node stack = root.lookup(".stack-view");
+            return stack.localToScene(stack.getBoundsInLocal()).getMinY();
+        });
+        assertTrue(toolbarY < stackY, "the toolbar is not above the stack");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
     void theChromeButtonsRunRealCommands() throws Exception {
         CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
         Region root = window.getRoot();

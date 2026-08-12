@@ -448,11 +448,19 @@
     -fx-cursor: hand;
 }
 
-/* ---- chrome buttons -----------------------------------------------------
- * The only buttons in the application, and deliberately quiet: they say that
- * settings and the two reference surfaces EXIST. Everything a calculator
- * actually does stays on the keyboard, the palette and the menu.
+/* ---- toolbar ------------------------------------------------------------
+ * The only buttons in the application. They say that settings and the two
+ * reference surfaces EXIST, and each names its chord in its tooltip.
+ * Everything a calculator actually does stays on the keyboard, the palette
+ * and the menu.
  */
+
+.toolbar {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-muted;
+    -fx-border-width: 0 0 1 0;
+    -fx-padding: 5 8 5 8;
+}
 
 .icon-line {
     -fx-stroke: -color-fg-muted;
@@ -462,16 +470,18 @@
     -fx-stroke-line-join: round;
 }
 
-.chrome-bar {
-    -fx-spacing: 2;
-    -fx-padding: 0 2 0 8;
-}
-
 .chrome-button {
     -fx-background-color: transparent;
-    -fx-background-radius: 4;
-    -fx-padding: 2 4 2 4;
+    -fx-background-radius: 5;
+    -fx-padding: 4 9 4 7;
     -fx-cursor: hand;
+    -fx-text-fill: -color-fg-muted;
+    /* The gap between glyph and label. Tight enough that the two read as one control. */
+    -fx-graphic-text-gap: 6;
+}
+
+.chrome-button:hover {
+    -fx-text-fill: -color-fg-default;
 }
 
 .chrome-button:hover {
