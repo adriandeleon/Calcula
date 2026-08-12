@@ -118,7 +118,8 @@ class IconsFxTest {
         Node toolbar = FxTestSupport.callOnFx(() -> root.lookup(".toolbar"));
         assertNotNull(toolbar, "no toolbar was built");
         // Above the stack, which is the whole point of moving it out of the mode line.
-        double toolbarY = FxTestSupport.callOnFx(() -> toolbar.localToScene(toolbar.getBoundsInLocal()).getMinY());
+        double toolbarY = FxTestSupport.callOnFx(
+                () -> toolbar.localToScene(toolbar.getBoundsInLocal()).getMinY());
         double stackY = FxTestSupport.callOnFx(() -> {
             Node stack = root.lookup(".stack-view");
             return stack.localToScene(stack.getBoundsInLocal()).getMinY();
