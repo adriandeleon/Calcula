@@ -9,6 +9,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -37,6 +38,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
+import javafx.util.Duration;
 
 import com.calcula.AppInfo;
 import com.calcula.SessionLog;
@@ -150,6 +152,20 @@ public final class CalcWindow {
 
     /** Transient interface feedback. See {@link #flash}. */
     private final Label echoNote = new Label();
+
+    /** The typeset reading of the line being typed. See {@link #buildPreview}. */
+    private final HBox previewHost = new HBox();
+
+    /** What the strip last decided to show, kept so a test can assert the decision it acted on. */
+    private InputPreview.Preview lastPreview = InputPreview.QUIET;
+
+    /**
+     * Long enough that a burst of typing parses once, short enough to feel immediate.
+     *
+     * <p>Parsing is cheap — a lexer and a precedence climb over one short line — but setting the
+     * result as mathematics builds nodes, and doing that per keystroke is work nobody asked for.
+     */
+    private final PauseTransition previewDebounce = new PauseTransition(Duration.millis(90));
 
     /**
      * How many machine calls are in flight.
@@ -351,7 +367,7 @@ public final class CalcWindow {
         VBox centre = new VBox(tabs.node(), split);
         VBox.setVgrow(split, Priority.ALWAYS);
         root.setCenter(centre);
-        root.setBottom(new VBox(buildModeLine(), buildEchoArea()));
+        root.setBottom(new VBox(buildModeLine(), buildPreview(), buildEchoArea()));
         root.getStyleClass().add("calc-root");
 
         input.addEventFilter(KeyEvent.KEY_PRESSED, this::onKey);
@@ -2460,6 +2476,51 @@ public final class CalcWindow {
         modes.setText(shownModes.describe() + "  " + reader.label());
     }
 
+    /**
+     * The line, set as mathematics, above the line being typed.
+     *
+     * <p>Parsed on a short debounce and never evaluated. It answers the question the echo area could
+     * not: {@code 1/2 + 1/3} and {@code 1/(2 + 1)/3} are four characters apart and produce very
+     * different answers, and until now the only way to find out which one had been typed was to press
+     * Enter and read the result backwards.
+     *
+     * <p>It also gives a syntax error somewhere to be. {@code ParseException} has carried its offset
+     * since it was written — its own javadoc says "so the echo area can point a caret at it" — and
+     * nothing had ever shown it.
+     *
+     * <p>Hidden and unmanaged when there is nothing to say, so a blank line costs no height.
+     */
+    private Region buildPreview() {
+        previewHost.getStyleClass().add("input-preview");
+        previewHost.setAlignment(Pos.CENTER_LEFT);
+        previewHost.setVisible(false);
+        previewHost.setManaged(false);
+        previewDebounce.setOnFinished(e -> refreshPreview());
+        return previewHost;
+    }
+
+    private void refreshPreview() {
+        InputPreview.Preview preview = InputPreview.of(input.getText(), reader.id());
+        lastPreview = preview;
+        if (preview.isQuiet()) {
+            previewHost.getChildren().clear();
+            previewHost.setVisible(false);
+            previewHost.setManaged(false);
+            return;
+        }
+        if (preview.error() != null) {
+            Label said = new Label(InputPreview.message(preview));
+            said.getStyleClass().add("input-preview-error");
+            previewHost.getChildren().setAll(said);
+        } else {
+            // The same size as the stack, on purpose: this is a promise about what is going to land
+            // there, and a promise set at a different size is a weaker one.
+            previewHost.getChildren().setAll(MathLayout.render(preview.parsed(), MathStyle.of(mathSize)));
+        }
+        previewHost.setVisible(true);
+        previewHost.setManaged(true);
+    }
+
     private Region buildEchoArea() {
         prompt.getStyleClass().add("echo-prompt");
         input.getStyleClass().add("echo-input");
@@ -2470,7 +2531,10 @@ public final class CalcWindow {
         echoNote.setManaged(false);
         // Cleared by the next keystroke, the way an echo area is: a message about what just happened
         // stops being true the moment the user does something else.
-        input.textProperty().addListener((o, was, now) -> clearFlash());
+        input.textProperty().addListener((o, was, now) -> {
+            clearFlash();
+            previewDebounce.playFromStart();
+        });
         HBox bar = new HBox(8, prompt, input, echoNote);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("echo-area");
@@ -2591,6 +2655,11 @@ public final class CalcWindow {
      */
     public String echoNote() {
         return read(() -> echoNote.isVisible() ? echoNote.getText() : "");
+    }
+
+    /** Visible for tests: what the strip above the input is currently showing. */
+    public InputPreview.Preview previewShown() {
+        return read(() -> previewHost.isVisible() ? lastPreview : InputPreview.QUIET);
     }
 
     /** Visible for tests: the trail as it is displayed, sigils included. */

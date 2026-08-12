@@ -705,3 +705,19 @@
     -fx-text-fill: -color-fg-subtle;
     -fx-padding: 0 2 0 8;
 }
+
+/*
+ * The line being typed, set as mathematics, directly above the line itself. Same ground as the echo
+ * area so the two read as one region; the strip takes no height at all when there is nothing to say.
+ */
+.input-preview {
+    -fx-background-color: -color-bg-default;
+    -fx-padding: 4 12 0 26;
+}
+
+/* Why nothing came back — the same meaning, and the same colour, as an error in the trail. */
+.input-preview-error {
+    -fx-font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-danger-fg;
+}
