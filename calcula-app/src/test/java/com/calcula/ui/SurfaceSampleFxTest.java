@@ -105,6 +105,39 @@ class SurfaceSampleFxTest {
     }
 
     @Test
+    void everyGlyphRenders() throws Exception {
+        // A sheet of all of them at size. IconsFxTest proves each PARSES; only a picture says whether
+        // scissors read as scissors at sixteen units across.
+        javafx.scene.layout.FlowPane sheet = new javafx.scene.layout.FlowPane(14, 14);
+        sheet.setStyle("-fx-padding: 20; -fx-background-color: #14161c;");
+        sheet.setPrefWrapLength(560);
+        for (String name : Icons.names()) {
+            javafx.scene.Node glyph = Icons.of(name);
+            javafx.scene.control.Label label = new javafx.scene.control.Label(name);
+            label.setStyle("-fx-font-family: Inter; -fx-font-size: 9px; -fx-text-fill: #8b93a7;");
+            javafx.scene.layout.VBox cell = new javafx.scene.layout.VBox(6, glyph, label);
+            cell.setAlignment(javafx.geometry.Pos.CENTER);
+            cell.setPrefWidth(78);
+            sheet.getChildren().add(cell);
+        }
+        FxTestSupport.runOnFx(() -> {
+            Scene scene = new Scene(sheet);
+            scene.getStylesheets()
+                    .add(CalcWindow.class
+                            .getResource("/com/calcula/styles/app.css")
+                            .toExternalForm());
+            sheet.applyCss();
+            sheet.layout();
+        });
+        SnapshotParameters parameters = new SnapshotParameters();
+        parameters.setTransform(new javafx.scene.transform.Scale(3, 3));
+        WritableImage image = FxTestSupport.callOnFx(() -> sheet.snapshot(parameters, null));
+        javax.imageio.ImageIO.write(
+                javafx.embed.swing.SwingFXUtils.fromFXImage(image, null), "png", new File("target/glyphs-sample.png"));
+        System.out.println("WROTE target/glyphs-sample.png");
+    }
+
+    @Test
     void theTabStripRenders() throws Exception {
         // Three sheets, one of them unsaved: whether a tab reads as selected, as modified, or as
         // neither is a question only a picture answers.

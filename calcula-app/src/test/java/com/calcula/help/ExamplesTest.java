@@ -28,12 +28,10 @@ class ExamplesTest {
     void everyLineParses() {
         List<String> broken = new ArrayList<>();
         for (Example example : Examples.all()) {
-            for (String line : example.lines()) {
-                try {
-                    Parser.parse(line);
-                } catch (RuntimeException e) {
-                    broken.add(example.title() + ": " + line + " — " + e.getMessage());
-                }
+            try {
+                Parser.parse(example.source());
+            } catch (RuntimeException e) {
+                broken.add(example.title() + ": " + example.source() + " — " + e.getMessage());
             }
         }
         assertTrue(broken.isEmpty(), "unparseable examples:\n" + String.join("\n", broken));
@@ -56,27 +54,27 @@ class ExamplesTest {
         CasEngine engine = CasEngineLoader.load(cas, CasEngineLoader.DEFAULT_IMPL);
         List<String> broken = new ArrayList<>();
         for (Example example : Examples.all()) {
-            for (String line : example.lines()) {
-                try {
-                    Expr result = engine.eval(Parser.parse(line));
-                    if (result == null) {
-                        broken.add(example.title() + ": " + line + " — evaluated to nothing");
-                    }
-                } catch (Exception e) {
-                    broken.add(example.title() + ": " + line + " — " + e.getMessage());
+            try {
+                Expr result = engine.eval(Parser.parse(example.source()));
+                if (result == null) {
+                    broken.add(example.title() + ": " + example.source() + " — evaluated to nothing");
                 }
+            } catch (Exception e) {
+                broken.add(example.title() + ": " + example.source() + " — " + e.getMessage());
             }
         }
         assertTrue(broken.isEmpty(), "examples the engine refused:\n" + String.join("\n", broken));
     }
 
     @Test
-    void aPlotExampleNamesThePlotCommand() {
-        // The command id is a string, so a rename elsewhere would leave these silently doing nothing.
-        List<Example> plots =
-                Examples.all().stream().filter(e -> e.command() != null).toList();
-        assertFalse(plots.isEmpty(), "no plot examples at all");
-        plots.forEach(e -> assertEquals("plot.function", e.command(), e.title()));
+    void aFollowUpNamesACommandRatherThanAChord() {
+        // Named as a command id so the sheet can show the LIVE binding: a chord written into the
+        // table would go stale the moment someone rebound it, and the hint would name a key that no
+        // longer does the thing.
+        List<Example> withNext =
+                Examples.all().stream().filter(e -> e.next() != null).toList();
+        assertFalse(withNext.isEmpty(), "no example suggests a next step");
+        withNext.forEach(e -> assertEquals("plot.function", e.next(), e.title()));
     }
 
     @Test
@@ -84,9 +82,15 @@ class ExamplesTest {
         for (Example example : Examples.all()) {
             assertFalse(example.group().isBlank(), example.title());
             assertFalse(example.title().isBlank(), example.group());
-            assertFalse(example.lines().isEmpty(), example.title());
-            example.lines().forEach(line -> assertFalse(line.isBlank(), example.title()));
+            assertFalse(example.source().isBlank(), example.title());
         }
+    }
+
+    @Test
+    void anExampleIsOneLineBecauseThatIsWhatTheInputLineTakes() {
+        // The text goes on the input line, so an example carrying a newline would put half of itself
+        // there and drop the rest without saying so.
+        Examples.all().forEach(e -> assertFalse(e.source().contains("\n"), e.title()));
     }
 
     @Test

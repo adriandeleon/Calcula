@@ -82,6 +82,27 @@ public final class Icons {
                 "M 2.75 5.25 H 9.75 M 7.25 2.75 L 9.75 5.25 L 7.25 7.75"
                         + " M 13.25 10.75 H 6.25 M 8.75 8.25 L 6.25 10.75 L 8.75 13.25");
 
+        // --- editing the input line --------------------------------------------------------------
+        // Scissors: two blades crossing above two finger loops, which is the only arrangement that
+        // still reads as scissors once it is 16 units across.
+        PATHS.put(
+                "cut",
+                "M 4.5 2.5 L 11 11 M 11.5 2.5 L 5 11"
+                        + " M 4.75 11.25 A 1.75 1.75 0 0 1 4.75 14.75 A 1.75 1.75 0 0 1 4.75 11.25 Z"
+                        + " M 11.25 11.25 A 1.75 1.75 0 0 1 11.25 14.75 A 1.75 1.75 0 0 1 11.25 11.25 Z");
+        // A clipboard: the board, and the clip at the top.
+        PATHS.put("paste", "M 5.75 3.25 H 3.75 V 13.75 H 12.25 V 3.25 H 10.25" + " M 6.25 1.75 H 9.75 V 4.25 H 6.25 Z");
+        // An arrow curving back on itself. Mirrored for redo, which is the only difference between
+        // them and the reason they are told apart at a glance rather than read.
+        PATHS.put("undo", "M 3.25 7.5 H 9.5 A 3.25 3.25 0 0 1 9.5 14 H 6.5 M 6.25 4.5 L 3.25 7.5 L 6.25 10.5");
+        PATHS.put("redo", "M 12.75 7.5 H 6.5 A 3.25 3.25 0 0 0 6.5 14 H 9.5 M 9.75 4.5 L 12.75 7.5 L 9.75 10.5");
+        // A dashed rectangle: the marquee every application draws around a selection.
+        PATHS.put(
+                "selectAll",
+                "M 2.5 4.75 V 3.25 H 4.5 M 7 3.25 H 9 M 11.5 3.25 H 13.5 V 4.75"
+                        + " M 13.5 7 V 9 M 13.5 11.5 V 13.5 H 11.5 M 9 13.5 H 7 M 4.5 13.5 H 2.5 V 11.5"
+                        + " M 2.5 9 V 7");
+
         // --- formats ---------------------------------------------------------------------------
         // Braces for a markup language, angle brackets for a tag one: they are told apart at a glance.
         PATHS.put(

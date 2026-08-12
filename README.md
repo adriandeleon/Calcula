@@ -91,7 +91,7 @@ innermost first:
 | `ui.math` | Expr → JavaFX nodes: real two-dimensional typeset mathematics |
 | `export` | TeX, MathML and Typst writers over the same tree |
 | `doc` | The `.calc` file: a sheet, and the plain-text format it saves as |
-| `help` | The worked examples, each of which runs when pressed |
+| `help` | The worked examples, each of which lands on the input line when picked |
 | `pdf` | A hand-rolled one-page PDF, so the sheet exports without a dependency |
 | `plot` | Expr → double closure, sampler with pole breaks, viewport, ticks |
 | `ui.plot` | The canvas, with drag and scroll |

@@ -11,9 +11,9 @@ import java.util.Locale;
  * the function sheet with brackets filled in — the value here is in the choosing: an example is worth
  * including when its <em>result</em> teaches something, and most functions do not have one of those.
  *
- * <p><b>Every line here is checked against the real engine.</b> {@code ExamplesCasTest} parses each one
- * and evaluates it, because an example that does not run is worse than no example: it is the first
- * thing a new user presses, and it teaches them that the application is broken.
+ * <p><b>Every line here is checked against the real engine.</b> {@code ExamplesTest} parses each one and
+ * evaluates it, because an example that does not work is worse than no example: it is the first thing a
+ * new user tries, and it teaches them that the application is broken.
  */
 public final class Examples {
 
@@ -91,19 +91,16 @@ public final class Examples {
                 "Working with a result",
                 ex(
                         "Take a result apart",
-                        List.of("expand((x + 1)^3)"),
-                        null,
+                        "expand((x + 1)^3)",
                         "Click any part of the answer, then Alt+Up to widen the selection — every command acts on what is selected."),
                 ex(
                         "Rewrite in place",
-                        List.of("integrate(x^2 + sin(x), x)"),
-                        null,
+                        "integrate(x^2 + sin(x), x)",
                         "Select just one term and apply a function to it; the rest of the expression stays where it is."),
                 ex(
                         "Two on the stack",
-                        List.of("x^2 - 1", "x + 1"),
-                        null,
-                        "Values pile up. Every operation takes its arguments from the top."));
+                        "x^2 - 1",
+                        "Run it, then type x + 1 and run that too — values pile up, and every operation takes its arguments from the top."));
     }
 
     private Examples() {}
@@ -132,20 +129,21 @@ public final class Examples {
 
     private static void group(String heading, Example... examples) {
         for (Example e : examples) {
-            ALL.add(new Example(heading, e.title(), e.lines(), e.command(), e.note()));
+            ALL.add(new Example(heading, e.title(), e.source(), e.next(), e.note()));
         }
     }
 
-    private static Example ex(String title, String line, String note) {
-        return new Example("", title, List.of(line), null, note);
+    private static Example ex(String title, String source, String note) {
+        return new Example("", title, source, null, note);
     }
 
-    private static Example ex(String title, List<String> lines, String command, String note) {
-        return new Example("", title, lines, command, note);
-    }
-
-    /** An example that draws itself: put the expression on the stack, then run the plot command. */
-    private static Example plot(String title, String line, String note) {
-        return new Example("", title, List.of(line), "plot.function", note);
+    /**
+     * An example whose point is the picture: run it, then plot what it left on the stack.
+     *
+     * <p>Two steps rather than one, and shown as two. Drawing the curve automatically would hide the
+     * fact that plotting acts on the top of the stack — which is the thing worth learning here.
+     */
+    private static Example plot(String title, String source, String note) {
+        return new Example("", title, source, "plot.function", note);
     }
 }

@@ -321,7 +321,7 @@ public final class CalcWindow {
             input.positionCaret(signature.length());
         });
 
-        exampleSheet = new ExampleSheet(overlays, this::runExample);
+        exampleSheet = new ExampleSheet(overlays, this::useExample, this::chordFor);
 
         registerCommands();
         installDefaultKeymap();
@@ -351,6 +351,8 @@ public final class CalcWindow {
         root.getStyleClass().add("calc-root");
 
         input.addEventFilter(KeyEvent.KEY_PRESSED, this::onKey);
+        // The other half of consuming a chord — see swallowTyped.
+        input.addEventFilter(KeyEvent.KEY_TYPED, this::onTyped);
         // Offer completions as the name is typed. Cheap: a prefix scan of a curated table of eighty.
         //
         // DEFERRED by one pulse, and it has to be: a text-property listener fires while the caret is
@@ -1037,6 +1039,11 @@ public final class CalcWindow {
     }
 
     private void onKey(KeyEvent event) {
+        // Cleared at the top of every press, so the flag can only ever pair with the KEY_TYPED that
+        // belongs to this keystroke. A chord that produces no typed event at all — an arrow, most
+        // Control combinations — leaves it set, and this is what stops that eating the next real
+        // character somebody types.
+        swallowTyped = false;
         if (handleCompletionAndHistory(event)) {
             return;
         }
@@ -1060,7 +1067,7 @@ public final class CalcWindow {
         // A key that completes nothing still gets eaten while a sequence was in progress: the user
         // asked for a command, and a stray letter appearing in the input line is not the answer.
         if (result.consumed() || continuing) {
-            event.consume();
+            consumeChord(event);
         }
         if (result.outcome() == KeyDispatcher.Outcome.PENDING) {
             setPrompt(result.sequence() + "-", true);
@@ -1335,7 +1342,7 @@ public final class CalcWindow {
         if (edit == null) {
             // Nothing to do — C-f at the end of the line. Consume anyway: the chord was ours, and
             // letting it fall through would run whatever the calculator binds it to instead.
-            event.consume();
+            consumeChord(event);
             return true;
         }
         if (!edit.text().equals(input.getText())) {
@@ -1349,8 +1356,40 @@ public final class CalcWindow {
             killed.putString(edit.killed());
             Clipboard.getSystemClipboard().setContent(killed);
         }
-        event.consume();
+        consumeChord(event);
         return true;
+    }
+
+    /**
+     * True while the typed event belonging to a consumed chord is still to come.
+     *
+     * @see #consumeChord
+     */
+    private boolean swallowTyped;
+
+    /**
+     * Consume a key press that was a chord — and the character it is about to type.
+     *
+     * <p><b>Consuming KEY_PRESSED does not stop KEY_TYPED.</b> They are separate events, and a text
+     * field inserts on the typed one — so a chord could run its command AND leave its letter in the
+     * input line. Alt+F moved the caret by a word and then typed an f into the place it had moved to.
+     *
+     * <p>This affected every {@code M-} chord, not only the readline ones. It went unnoticed because
+     * the older Alt bindings all take the eye somewhere else the instant they fire — M-x opens the
+     * palette, M-p draws a plot — so the stray letter was left behind in a field nobody was looking
+     * at. The readline keys were the first that leave you looking straight at the input line.
+     */
+    private void consumeChord(KeyEvent event) {
+        event.consume();
+        swallowTyped = true;
+    }
+
+    /** Eat the character belonging to a chord that has already been handled. */
+    private void onTyped(KeyEvent event) {
+        if (swallowTyped) {
+            swallowTyped = false;
+            event.consume();
+        }
     }
 
     /** Walk the history. {@code historyAt == history.size()} is the live line, below the oldest entry. */
@@ -1974,20 +2013,18 @@ public final class CalcWindow {
      * how to reach it faster next time.
      */
     /**
-     * Run an example: type each line as if by hand, then any command it ends with.
+     * Take an example: put its text on the input line and leave Enter to the user.
      *
-     * <p>Through {@code submit} rather than straight onto the stack, so an example goes through the
-     * reader and the trail exactly as typing it would — which is the point. An example that took a
-     * private path would demonstrate something the user cannot reproduce.
+     * <p>Deliberately not run. An example that ran itself would demonstrate a gesture nobody can
+     * repeat — the thing being taught is what to type — and it would deny the obvious next move,
+     * which is to change a number and see what happens before pressing Enter.
      *
-     * <p>Ordering holds without a wait: every submission and every command queues on the one worker
-     * thread, so the plot at the end sees the value the line before it put there.
+     * <p>The same treatment a picked function signature gets, for the same reason.
      */
-    void runExample(com.calcula.help.Example example) {
-        example.lines().forEach(this::submit);
-        if (example.command() != null) {
-            runCommand(example.command());
-        }
+    void useExample(com.calcula.help.Example example) {
+        input.setText(example.source());
+        input.requestFocus();
+        input.positionCaret(example.source().length());
     }
 
     /** Leave, after asking about unsaved work — the one exit that must not lose a sheet silently. */
@@ -2360,11 +2397,50 @@ public final class CalcWindow {
     private Region buildEchoArea() {
         prompt.getStyleClass().add("echo-prompt");
         input.getStyleClass().add("echo-input");
+        input.setContextMenu(inputMenu());
         HBox.setHgrow(input, Priority.ALWAYS);
         HBox bar = new HBox(8, prompt, input);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("echo-area");
         return bar;
+    }
+
+    /**
+     * The input line's right-click menu.
+     *
+     * <p>Replaces the one JavaFX builds, which carries no icons — every other menu in this application
+     * has them, and the one menu that does not is the one that looks like it belongs to a different
+     * program. A text field only shows its own menu when none has been set, so setting one is all
+     * that is needed.
+     *
+     * <p>Its state is worked out each time it opens rather than tracked: Cut and Copy need a
+     * selection, Paste needs something on the clipboard, and Undo and Redo need history. Offering a
+     * Paste that does nothing is a small lie the menu is in a position to avoid.
+     */
+    private ContextMenu inputMenu() {
+        MenuItem undo = menuItem("undo", "Undo", input::undo);
+        MenuItem redo = menuItem("redo", "Redo", input::redo);
+        MenuItem cut = menuItem("cut", "Cut", input::cut);
+        MenuItem copy = menuItem("copy", "Copy", input::copy);
+        MenuItem paste = menuItem("paste", "Paste", input::paste);
+        MenuItem selectAll = menuItem("selectAll", "Select All", input::selectAll);
+        MenuItem clear = menuItem("drop", "Clear", input::clear);
+
+        ContextMenu menu = new ContextMenu(
+                undo, redo, new SeparatorMenuItem(), cut, copy, paste, new SeparatorMenuItem(), selectAll, clear);
+        menu.setOnShowing(e -> {
+            boolean selected =
+                    input.getSelectedText() != null && !input.getSelectedText().isEmpty();
+            boolean any = !input.getText().isEmpty();
+            undo.setDisable(!input.isUndoable());
+            redo.setDisable(!input.isRedoable());
+            cut.setDisable(!selected);
+            copy.setDisable(!selected);
+            paste.setDisable(!Clipboard.getSystemClipboard().hasString());
+            selectAll.setDisable(!any);
+            clear.setDisable(!any);
+        });
+        return menu;
     }
 
     // ---------------------------------------------------------------- test seams
@@ -2407,6 +2483,11 @@ public final class CalcWindow {
     /** Visible for tests: the trail as it is displayed, sigils included. */
     public List<String> trailContents() {
         return read(() -> trailLines.stream().map(CalcWindow::renderTrail).toList());
+    }
+
+    /** Visible for tests: the input line itself, so key events can be fired at its filters. */
+    javafx.scene.control.TextField inputField() {
+        return input;
     }
 
     /** Visible for tests: drive the echo area without a robot. */

@@ -1,7 +1,5 @@
 package com.calcula.ui;
 
-import java.util.List;
-
 import com.calcula.help.Example;
 import com.calcula.help.Examples;
 import org.junit.jupiter.api.BeforeAll;
@@ -10,10 +8,9 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Pressing an example. */
+/** Picking an example. */
 @Tag("fx")
 class ExampleSheetFxTest {
 
@@ -35,57 +32,60 @@ class ExampleSheetFxTest {
     }
 
     @Test
-    void runningAnExamplePutsItsResultOnTheStack() throws Exception {
+    void pickingAnExamplePutsItOnTheInputLineAndStopsThere() throws Exception {
+        // Deliberately not run. An example that ran itself would demonstrate a gesture nobody can
+        // repeat — the thing being taught is what to type — and it would deny the obvious next move,
+        // which is to change a number before pressing Enter.
         CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
         Example example = named("Exact arithmetic");
-        FxTestSupport.runOnFx(() -> window.runExample(example));
+        FxTestSupport.runOnFx(() -> window.useExample(example));
+
+        assertEquals(
+                example.source(),
+                FxTestSupport.callOnFx(() -> window.inputField().getText()));
+        assertTrue(window.stackContents().isEmpty(), "the example ran itself");
+        assertTrue(window.trailContents().isEmpty(), "the example ran itself");
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void theCaretLandsAtTheEndSoItCanBeEdited() throws Exception {
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        Example example = named("Multiply out");
+        FxTestSupport.runOnFx(() -> window.useExample(example));
+        assertEquals(example.source().length(), (int)
+                FxTestSupport.callOnFx(() -> window.inputField().getCaretPosition()));
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void andThenEnterRunsIt() throws Exception {
+        // The whole point: what lands on the input line is exactly what the user would have typed,
+        // so running it is their ordinary Enter and nothing special.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        FxTestSupport.runOnFx(() -> window.useExample(named("Exact arithmetic")));
+        FxTestSupport.runOnFx(() -> window.submit(window.inputField().getText()));
         FxTestSupport.waitFor("the result", 5000, () -> !window.stackContents().isEmpty());
-        // Folded without the engine, so the value is checkable even in a stubbed run.
         assertEquals(
                 "1/2", com.calcula.parse.Formatter.format(window.stackContents().get(0)));
         FxTestSupport.runOnFx(window::dispose);
     }
 
     @Test
-    void aMultiLineExampleLeavesEveryLineOnTheStack() throws Exception {
+    void everyExampleCanBePickedWithoutRaisingAnything() throws Exception {
         CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
-        Example example = named("Two on the stack");
-        assertEquals(2, example.lines().size(), "the example this test is about changed shape");
-        FxTestSupport.runOnFx(() -> window.runExample(example));
-        FxTestSupport.waitFor("both entries", 5000, () -> window.stackContents().size() >= 2);
-        FxTestSupport.runOnFx(window::dispose);
-    }
-
-    @Test
-    void theExampleGoesThroughTheTrailJustAsTypingItWould() throws Exception {
-        // Not a private path onto the stack: an example has to demonstrate something the user can
-        // reproduce by typing, and the trail is the evidence that it did.
-        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
-        FxTestSupport.runOnFx(() -> window.runExample(named("Exact arithmetic")));
-        FxTestSupport.waitFor("the trail", 5000, () -> !window.trailContents().isEmpty());
-        String trail = String.join("\n", window.trailContents());
-        assertTrue(trail.contains("1/3 + 1/6"), trail);
-        FxTestSupport.runOnFx(window::dispose);
-    }
-
-    @Test
-    void everyExampleRunsWithoutRaisingAnError() throws Exception {
-        // The engine is not loaded here, so this is not about the answers — it is about the window
-        // surviving each one. A line that made a command throw would leave the trail with an error.
-        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
-        List<Example> examples = Examples.all();
-        for (Example example : examples) {
-            FxTestSupport.runOnFx(() -> window.runExample(example));
+        for (Example example : Examples.all()) {
+            FxTestSupport.runOnFx(() -> window.useExample(example));
+            assertEquals(
+                    example.source(),
+                    FxTestSupport.callOnFx(() -> window.inputField().getText()));
         }
-        FxTestSupport.waitFor(
-                "the last line", 15000, () -> window.trailContents().size() >= examples.size());
-        String trail = String.join("\n", window.trailContents());
-        assertFalse(trail.toLowerCase(java.util.Locale.ROOT).contains("unexpected"), "a parse failure: " + trail);
+        assertTrue(window.stackContents().isEmpty(), "picking examples ran one of them");
         FxTestSupport.runOnFx(window::dispose);
     }
 
     @Test
-    void theSheetIsReachableAsACommandAndAsAButton() throws Exception {
+    void theSheetIsReachableAsACommand() throws Exception {
         CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
         assertTrue(FxTestSupport.callOnFx(() -> window.run("help.examples")), "no help.examples command");
         FxTestSupport.runOnFx(window::dispose);
