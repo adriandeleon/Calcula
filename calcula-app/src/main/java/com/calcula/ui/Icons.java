@@ -54,6 +54,13 @@ public final class Icons {
                         + " C 4.25 11.5 6.5 11.5 8 12.75 C 9.5 11.5 11.75 11.5 13.5 11.75 V 3.25"
                         + " C 11.75 3 9.5 3 8 4.25 Z");
 
+        // A lightbulb: a worked example is an idea you can press. Drawn as a bulb outline over two
+        // base lines — a filled bulb at 16px reads as a blob.
+        PATHS.put(
+                "examples",
+                "M 8 1.75 A 4.5 4.5 0 0 1 8 10.75 A 4.5 4.5 0 0 1 8 1.75 Z"
+                        + " M 6.25 11.25 H 9.75 M 6.75 13.5 H 9.25 M 6.5 9 H 9.5");
+
         // A keyboard, for the palette: the surface that answers "what can this do".
         PATHS.put(
                 "palette",

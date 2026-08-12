@@ -577,3 +577,29 @@
     -fx-scale-x: 0.72;
     -fx-scale-y: 0.72;
 }
+
+/* An example row is three stacked lines, so it needs a gap the one-line function
+ * rows do not: without it the note of one example butts against the title of the
+ * next and the list reads as one wall of text. */
+.sheet-row.example-row {
+    -fx-padding: 6 6 8 6;
+}
+
+/* An example row: what it shows, what gets typed, and what to notice. */
+.example-title {
+    -fx-font-family: "Inter";
+    -fx-font-size: 12px;
+    -fx-text-fill: -color-fg-default;
+}
+
+.example-source {
+    -fx-font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    -fx-font-size: 12px;
+    -fx-text-fill: -color-accent-fg;
+}
+
+.example-note {
+    -fx-font-family: "Inter";
+    -fx-font-size: 11px;
+    -fx-text-fill: -color-fg-muted;
+}

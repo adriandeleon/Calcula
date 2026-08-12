@@ -172,6 +172,8 @@ public final class CalcWindow {
     private final SettingsDialog settingsDialog;
     private final CommandMenuBar menuBar;
     private final FunctionSheet functionSheet;
+
+    private final ExampleSheet exampleSheet;
     private final InputCompletion completion = new InputCompletion(input);
 
     /**
@@ -246,6 +248,8 @@ public final class CalcWindow {
             input.requestFocus();
             input.positionCaret(signature.length());
         });
+
+        exampleSheet = new ExampleSheet(overlays, this::runExample);
 
         registerCommands();
         installDefaultKeymap();
@@ -492,6 +496,11 @@ public final class CalcWindow {
         registry.register("help.about", "About Calcula", "Version and licence", this::showAbout);
         registry.register(
                 "help.functions", "Functions…", "Everything callable, grouped and filterable", functionSheet::show);
+        registry.register(
+                "help.examples",
+                "Examples…",
+                "Worked examples of what this can do — click one to run it",
+                exampleSheet::show);
         registry.register(
                 "select.widen",
                 "Select enclosing part",
@@ -912,6 +921,7 @@ public final class CalcWindow {
         keymap.bind("M-Right", "select.nextSibling");
         keymap.bind("M-Left", "select.previousSibling");
         keymap.bind("C-h f", "help.functions");
+        keymap.bind("C-h e", "help.examples");
     }
 
     private void onKey(KeyEvent event) {
@@ -1813,12 +1823,30 @@ public final class CalcWindow {
      * <p>Each still names its chord in its tooltip. The toolbar says a thing exists; the tooltip says
      * how to reach it faster next time.
      */
+    /**
+     * Run an example: type each line as if by hand, then any command it ends with.
+     *
+     * <p>Through {@code submit} rather than straight onto the stack, so an example goes through the
+     * reader and the trail exactly as typing it would — which is the point. An example that took a
+     * private path would demonstrate something the user cannot reproduce.
+     *
+     * <p>Ordering holds without a wait: every submission and every command queues on the one worker
+     * thread, so the plot at the end sees the value the line before it put there.
+     */
+    void runExample(com.calcula.help.Example example) {
+        example.lines().forEach(this::submit);
+        if (example.command() != null) {
+            runCommand(example.command());
+        }
+    }
+
     private Region buildToolBar() {
         HBox bar = new HBox(
                 6,
                 chromeButton("palette", "Commands", "app.palette", "Every command, searchable"),
                 chromeButton("functions", "Functions", "help.functions", "Every function, with what it does"),
                 chromeButton("settings", "Settings", "app.settings", "Settings"),
+                chromeButton("examples", "Examples", "help.examples", "Worked examples — click one to run it"),
                 chromeButton("about", "About", "help.about", "About Calcula"));
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("toolbar");

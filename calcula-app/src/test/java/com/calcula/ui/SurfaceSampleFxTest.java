@@ -105,6 +105,11 @@ class SurfaceSampleFxTest {
     }
 
     @Test
+    void theExampleSheetRenders() throws Exception {
+        snapshot("examples-sample.png", "help.examples");
+    }
+
+    @Test
     void thePaletteRenders() throws Exception {
         snapshot("palette-sample.png", "app.palette");
     }
