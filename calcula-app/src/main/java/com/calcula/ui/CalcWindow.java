@@ -42,7 +42,9 @@ import com.calcula.command.CommandGroups;
 import com.calcula.command.CommandRegistry;
 import com.calcula.config.Settings;
 import com.calcula.config.SettingsStore;
+import com.calcula.export.MathmlWriter;
 import com.calcula.export.TexWriter;
+import com.calcula.export.TypstWriter;
 import com.calcula.expr.Expr;
 import com.calcula.expr.ExprPath;
 import com.calcula.expr.Exprs;
@@ -540,39 +542,35 @@ public final class CalcWindow {
             String shown = label.length() > 28 ? label.substring(0, 27) + "…" : label;
             menu.getItems()
                     .addAll(
-                            menuItem("Extract  " + shown, () -> machineOp(new Op.Push(part))),
-                            menuItem("Copy  " + shown, () -> {
-                                ClipboardExport.copy(part);
-                                noteFromFx(ClipboardExport.describe(part));
-                            }),
-                            menuItem("Plot  " + shown, () -> plotValue(part)));
+                            menuItem("extract", "Extract  " + shown, () -> machineOp(new Op.Push(part))),
+                            copyMenu("Copy  " + shown, part),
+                            menuItem("plot", "Plot  " + shown, () -> plotValue(part)));
             // Rewriting needs the address; extracting and copying do not. A part with no address —
             // one the layout synthesised — still offers those three and simply cannot offer these.
             Menu rewrite = new Menu("Rewrite  " + shown);
+            rewrite.setGraphic(Icons.of("rewrite"));
             // The very same commands the keyboard runs. The right-click already SELECTED this part,
             // so menu and keyboard are operating on one selection rather than on two ideas of one.
             PART_TRANSFORMS.forEach((title, head) -> rewrite.getItems()
                     .add(menuItem(
+                            null,
                             title + "   (" + chordFor(transformCommandId(head)) + ")",
                             () -> runCommand(transformCommandId(head)))));
             menu.getItems().addAll(rewrite, new SeparatorMenuItem());
         }
         menu.getItems()
                 .addAll(
-                        menuItem("Copy", () -> {
-                            ClipboardExport.copy(value);
-                            noteFromFx(ClipboardExport.describe(value));
-                        }),
-                        menuItem("Copy as LaTeX", () -> copyText(TexWriter.write(value))),
+                        copyMenu("Copy", value),
                         new SeparatorMenuItem(),
-                        menuItem("Duplicate to top", () -> machineOp(new Op.Push(value))),
-                        menuItem("Plot", () -> plotValue(value)));
+                        menuItem("duplicate", "Duplicate to top", () -> machineOp(new Op.Push(value))),
+                        menuItem("plot", "Plot", () -> plotValue(value)),
+                        menuItem("pdf", "Export sheet to PDF…", this::exportSheetToPdf));
         if (position == 1) {
             menu.getItems()
                     .addAll(
                             new SeparatorMenuItem(),
-                            menuItem("Evaluate", () -> runCommand("stack.evaluate")),
-                            menuItem("Drop", () -> runCommand("stack.drop")));
+                            menuItem("evaluate", "Evaluate", () -> runCommand("stack.evaluate")),
+                            menuItem("drop", "Drop", () -> runCommand("stack.drop")));
         }
         return menu;
     }
@@ -628,18 +626,87 @@ public final class CalcWindow {
 
     ContextMenu trailMenu(TrailEntry entry) {
         return new ContextMenu(
-                menuItem("Copy line", () -> copyText(renderTrail(entry))),
+                menuItem("copy", "Copy line", () -> copyText(renderTrail(entry))),
                 menuItem(
+                        "copy",
                         "Copy whole trail",
                         () -> copyText(trailLines.stream()
                                 .map(CalcWindow::renderTrail)
                                 .collect(java.util.stream.Collectors.joining(System.lineSeparator())))));
     }
 
-    private static MenuItem menuItem(String label, Runnable action) {
+    /**
+     * Write the whole sheet to a PDF.
+     *
+     * <p>Hand-rolled rather than PDFBox: this application has NO automatic-module dependencies, which
+     * is exactly why it needs no moditect step and why packaging is as simple as it is. A PDF of a
+     * page of typeset mathematics we already know how to render is not worth ending that for.
+     */
+    private void exportSheetToPdf() {
+        if (stack.isEmpty()) {
+            noteFromFx("nothing on the stack to export");
+            return;
+        }
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle("Export sheet to PDF");
+        chooser.setInitialFileName("calcula-sheet.pdf");
+        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter("PDF", "*.pdf"));
+        java.io.File target = chooser.showSaveDialog(
+                sceneRoot.getScene() == null ? null : sceneRoot.getScene().getWindow());
+        if (target == null) {
+            return;
+        }
+        try {
+            javafx.scene.image.Image page = SheetRenderer.render(List.copyOf(stack), mathSize);
+            com.calcula.pdf.PdfWriter.writeImage(target.toPath(), page, SheetRenderer.SCALE);
+            noteFromFx("exported " + target.getName());
+        } catch (Exception e) {
+            noteFromFx("could not export: " + describe(e));
+        }
+    }
+
+    private static MenuItem menuItem(String glyph, String label, Runnable action) {
         MenuItem item = new MenuItem(label);
+        if (glyph != null) {
+            item.setGraphic(Icons.of(glyph));
+        }
         item.setOnAction(e -> action.run());
         return item;
+    }
+
+    /**
+     * The copy submenu: everything at once, then each format on its own.
+     *
+     * <p>The first item is the useful default — a clipboard is a multi-format container and the
+     * consumer picks. The rest exist because "paste it as MathML" is sometimes a specific request,
+     * and because a named format that quietly puts four things on the clipboard is not that.
+     */
+    private Menu copyMenu(String title, Expr value) {
+        Menu menu = new Menu(title);
+        menu.setGraphic(Icons.of("copy"));
+        menu.getItems()
+                .addAll(
+                        menuItem("copy", "Copy (every format)", () -> {
+                            ClipboardExport.copy(value);
+                            noteFromFx(ClipboardExport.describe(value));
+                        }),
+                        new SeparatorMenuItem(),
+                        copyAs("latex", "LaTeX", value, TexWriter::write),
+                        copyAs("mathml", "MathML", value, MathmlWriter::write),
+                        copyAs("document", "Typst", value, TypstWriter::writeInline),
+                        copyAs("evaluate", "Plain text", value, Formatter::format),
+                        menuItem("image", "Copy as PNG", () -> {
+                            ClipboardExport.copyImage(value);
+                            noteFromFx("copied a picture");
+                        }));
+        return menu;
+    }
+
+    private MenuItem copyAs(String glyph, String format, Expr value, java.util.function.Function<Expr, String> writer) {
+        return menuItem(glyph, "Copy as " + format, () -> {
+            ClipboardExport.copyText(writer.apply(value));
+            noteFromFx("copied as " + format);
+        });
     }
 
     private void copyText(String text) {
@@ -1098,7 +1165,8 @@ public final class CalcWindow {
         };
     }
 
-    private static String describe(RuntimeException e) {
+    /** The readable half of an exception: its message, or the class name when it has none. */
+    private static String describe(Exception e) {
         String message = e.getMessage();
         return message == null || message.isBlank() ? e.toString() : message;
     }

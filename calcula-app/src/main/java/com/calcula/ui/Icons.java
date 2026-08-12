@@ -59,6 +59,39 @@ public final class Icons {
                 "palette",
                 "M 1.75 4.25 H 14.25 V 11.75 H 1.75 Z M 4.25 6.75 H 4.5 M 7 6.75 H 7.25"
                         + " M 9.75 6.75 H 10 M 12 6.75 H 12.25 M 5 9.25 H 11");
+
+        // --- menu actions ----------------------------------------------------------------------
+        PATHS.put("copy", "M 5.75 5.75 H 13.25 V 13.25 H 5.75 Z M 3.25 10.25 V 3.25 H 10.25");
+        // Out of a box and away: taking a part out of the formula it sits in.
+        PATHS.put("extract", "M 8 9.75 V 2.5 M 5 5.5 L 8 2.5 L 11 5.5 M 2.75 8.5 V 13.25 H 13.25 V 8.5");
+        PATHS.put("plot", "M 2.5 13 V 3 M 2.5 13 H 13.5 M 4 10.5 C 6 10.5 6.5 5 8.5 5 C 10.5 5 11 8.5 13 8.5");
+        PATHS.put("evaluate", "M 3.5 6.5 H 12.5 M 3.5 9.5 H 12.5");
+        PATHS.put("drop", "M 4.5 4.5 L 11.5 11.5 M 11.5 4.5 L 4.5 11.5");
+        PATHS.put("duplicate", "M 3.25 3.25 H 9.75 V 9.75 H 3.25 Z M 6.25 12.75 H 12.75 V 6.25");
+        // A circular arrow: the same thing, said differently.
+        PATHS.put("rewrite", "M 12.75 5.75 A 5.25 5.25 0 1 0 13.25 9.25 M 12.75 2.5 V 5.75 H 9.5");
+        PATHS.put(
+                "replace",
+                "M 2.75 5.25 H 9.75 M 7.25 2.75 L 9.75 5.25 L 7.25 7.75"
+                        + " M 13.25 10.75 H 6.25 M 8.75 8.25 L 6.25 10.75 L 8.75 13.25");
+
+        // --- formats ---------------------------------------------------------------------------
+        // Braces for a markup language, angle brackets for a tag one: they are told apart at a glance.
+        PATHS.put(
+                "latex",
+                "M 6.5 2.75 C 4.5 2.75 5.5 8 3.25 8 C 5.5 8 4.5 13.25 6.5 13.25"
+                        + " M 9.5 2.75 C 11.5 2.75 10.5 8 12.75 8 C 10.5 8 11.5 13.25 9.5 13.25");
+        PATHS.put("mathml", "M 5.75 4.25 L 2.25 8 L 5.75 11.75 M 10.25 4.25 L 13.75 8 L 10.25 11.75");
+        PATHS.put(
+                "image",
+                "M 2.25 3.25 H 13.75 V 12.75 H 2.25 Z M 2.25 10.25 L 6 6.75 L 9 9.75"
+                        + " L 11 8 L 13.75 10.5 M 10.5 5.75 H 10.75");
+        PATHS.put("document", "M 3.75 1.75 H 9.5 L 12.25 4.5 V 14.25 H 3.75 Z M 9.5 1.75 V 4.5 H 12.25");
+        PATHS.put("pdf", "M 8 2.5 V 10 M 4.5 6.75 L 8 10.25 L 11.5 6.75 M 2.5 13.5 H 13.5");
+
+        // --- zoom ------------------------------------------------------------------------------
+        PATHS.put("zoomIn", "M 8 4 V 12 M 4 8 H 12");
+        PATHS.put("zoomOut", "M 4 8 H 12");
     }
 
     private Icons() {}

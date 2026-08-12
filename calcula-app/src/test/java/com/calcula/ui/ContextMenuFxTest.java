@@ -36,6 +36,16 @@ class ContextMenuFxTest {
                 .toList();
     }
 
+    /** The items inside the named submenu, so a nested entry is reachable to assert on. */
+    private static List<String> submenu(javafx.scene.control.ContextMenu menu, String title) {
+        return menu.getItems().stream()
+                .filter(item -> item instanceof javafx.scene.control.Menu && title.equals(item.getText()))
+                .flatMap(item -> ((javafx.scene.control.Menu) item).getItems().stream())
+                .map(MenuItem::getText)
+                .filter(t -> t != null)
+                .toList();
+    }
+
     @Test
     void theTopOfTheStackOffersTheOperationsThatActOnTheTop() throws Exception {
         CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
@@ -61,10 +71,24 @@ class ContextMenuFxTest {
             int at = position;
             List<String> items = FxTestSupport.callOnFx(() -> labels(window.stackMenu(Parser.parse("x + 1"), at)));
             assertTrue(items.contains("Copy"), "row " + at + ": " + items);
-            assertTrue(items.contains("Copy as LaTeX"), "row " + at + ": " + items);
             assertTrue(items.contains("Duplicate to top"), "row " + at + ": " + items);
             assertTrue(items.contains("Plot"), "row " + at + ": " + items);
         }
+        FxTestSupport.runOnFx(window::dispose);
+    }
+
+    @Test
+    void everyExportFormatIsReachableFromTheCopySubmenu() throws Exception {
+        // Copy and Copy-as-LaTeX used to be separate top-level items that put the SAME thing on the
+        // clipboard for a text target, which read as one of them being broken. The formats now sit
+        // under one submenu and each puts exactly its own format on.
+        CalcWindow window = FxTestSupport.callOnFx(CalcWindow::new);
+        List<String> formats =
+                FxTestSupport.callOnFx(() -> submenu(window.stackMenu(Parser.parse("x + 1"), 1), "Copy"));
+        for (String format : List.of("LaTeX", "MathML", "Typst", "Plain text")) {
+            assertTrue(formats.contains("Copy as " + format), format + " missing from " + formats);
+        }
+        assertTrue(formats.contains("Copy as PNG"), formats.toString());
         FxTestSupport.runOnFx(window::dispose);
     }
 

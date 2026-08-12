@@ -515,3 +515,48 @@
 .completion-row {
     -fx-padding: 0 4 0 2;
 }
+
+/* ---- context menus ------------------------------------------------------
+ * Every item the same face and the same size. A menu built from several
+ * places drifts otherwise — one item inherits the maths serif, another the
+ * default, and the list reads as three menus stacked.
+ */
+
+.context-menu {
+    -fx-background-radius: 6;
+    -fx-padding: 4;
+}
+
+.context-menu .menu-item .label,
+.context-menu .menu .label {
+    -fx-font-family: "Inter", "SF Pro Text", "Segoe UI", sans-serif;
+    -fx-font-size: 12px;
+}
+
+/* The glyph column: a fixed gap, so labels line up whether or not an item has one. */
+.context-menu .menu-item {
+    -fx-graphic-text-gap: 8;
+    -fx-padding: 3 8 3 6;
+}
+
+.context-menu .menu-item:focused .icon-line {
+    -fx-stroke: -color-fg-emphasis;
+}
+
+/* ---- trail zoom --------------------------------------------------------- */
+
+.trail-zoom {
+    -fx-padding: 2 4 2 4;
+    -fx-spacing: 2;
+}
+
+.trail-zoom .button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 4;
+    -fx-padding: 2 5 2 5;
+    -fx-cursor: hand;
+}
+
+.trail-zoom .button:hover {
+    -fx-background-color: -color-bg-subtle;
+}

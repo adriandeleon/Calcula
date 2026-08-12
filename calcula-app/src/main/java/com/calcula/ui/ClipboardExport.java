@@ -81,9 +81,30 @@ public final class ClipboardExport {
         return content;
     }
 
-    /** Render, snapshot and copy. Must run on the FX thread. */
+    /** Render, snapshot and copy every flavour at once. Must run on the FX thread. */
     public static void copy(Expr e) {
         Clipboard.getSystemClipboard().setContent(contents(e, picture(e)));
+    }
+
+    /**
+     * Copy ONE format, as plain text.
+     *
+     * <p>Distinct from {@link #copy} in the way that matters: the multi-format copy puts LaTeX on as
+     * the plain-text flavour, so pasting it into a text editor and pasting "Copy as LaTeX" gave
+     * identical results and the two menu items looked like the same command written twice. These put
+     * exactly one thing on the clipboard, which is what someone asking for a named format wants.
+     */
+    public static void copyText(String text) {
+        ClipboardContent content = new ClipboardContent();
+        content.putString(text);
+        Clipboard.getSystemClipboard().setContent(content);
+    }
+
+    /** Just the picture, for somewhere that would otherwise take the text. */
+    public static void copyImage(Expr e) {
+        ClipboardContent content = new ClipboardContent();
+        content.putImage(picture(e));
+        Clipboard.getSystemClipboard().setContent(content);
     }
 
     /** A short description of what was copied, for the echo area. */

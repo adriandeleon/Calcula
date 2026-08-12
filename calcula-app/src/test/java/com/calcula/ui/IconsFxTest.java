@@ -37,8 +37,16 @@ class IconsFxTest {
         for (String name : Icons.names()) {
             Node icon = FxTestSupport.callOnFx(() -> Icons.of(name));
             var bounds = FxTestSupport.callOnFx(icon::getBoundsInLocal);
-            assertTrue(bounds.getWidth() > 1, name + " drew nothing — check its arc flags are spaced");
-            assertTrue(bounds.getHeight() > 1, name + " drew nothing — check its arc flags are spaced");
+            // Either dimension, not both: a minus sign is one horizontal line, and outside a styled
+            // scene its bounds are exactly the default stroke width tall. Demanding both would rule
+            // out a legitimate glyph while still catching the real failure, which is bounds of ZERO.
+            assertTrue(
+                    Math.max(bounds.getWidth(), bounds.getHeight()) > 1,
+                    name + " drew nothing — check its arc flags are spaced");
+            // Only ONE dimension is checked, and deliberately. Outside a styled scene these paths
+            // have no stroke at all — `.icon-line` supplies it — so bounds are the raw geometry, and
+            // a horizontal line's geometry is genuinely zero pixels tall. What a failed parse looks
+            // like is zero in BOTH, which the check above catches.
         }
     }
 

@@ -26,6 +26,10 @@ class WritersTest {
         return MathmlWriter.write(Parser.parse(source));
     }
 
+    private static String typst(String source) {
+        return TypstWriter.write(Parser.parse(source));
+    }
+
     // ---- LaTeX --------------------------------------------------------------------------------
 
     @Test
@@ -201,5 +205,71 @@ class WritersTest {
         assertDoesNotThrow(() -> DocumentBuilderFactory.newInstance()
                 .newDocumentBuilder()
                 .parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8))));
+    }
+
+    // ---- Typst --------------------------------------------------------------------------------
+
+    @Test
+    void aMultiLetterNameIsQuotedBecauseBareLettersAreAProduct() {
+        // The whole reason Typst needs its own writer rather than a LaTeX translation: in Typst maths
+        // an unquoted `foo` is f times o times o. Getting this wrong produces output that renders
+        // without complaint and means something else entirely.
+        assertEquals("\"foo\"", typst("foo"));
+        assertEquals("x", typst("x"));
+    }
+
+    @Test
+    void aNameTypstAlreadyKnowsIsLeftAsASymbol() {
+        // Quoting `pi` would spell it p-i rather than drawing the letter.
+        assertEquals("pi", typst("pi"));
+    }
+
+    @Test
+    void aSubtrahendIsBracketedOnlyWhenItIsAdditive() {
+        // a - (b + c) genuinely differs from a - b + c; a - (x^2) is merely noise.
+        assertEquals("1 - x^(2)", typst("1 - x^2"));
+        assertEquals("a - (b + c)", typst("a - (b + c)"));
+    }
+
+    @Test
+    void divisionBracketsBothSides() {
+        // a/b + c and a/(b + c) are different expressions, and the brackets cannot be inherited from
+        // however the tree happens to be shaped.
+        assertEquals("(x + 1)/(x - 1)", typst("(x+1)/(x-1)"));
+        // Both sides bracketed even when one is a single token: the rule is the rule.
+        assertEquals("(1)/(x)", typst("1/x"));
+    }
+
+    @Test
+    void rootsAndPowersUseTypstsOwnForms() {
+        assertEquals("sqrt(1 - x^(2))", typst("sqrt(1-x^2)"));
+        assertEquals("x^(10)", typst("x^10"));
+    }
+
+    @Test
+    void inlineWrapsInDollars() {
+        assertEquals("$x + 1$", TypstWriter.writeInline(Parser.parse("x+1")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "sin(x)/cos(x)",
+                "[[1,2],[3,4]]",
+                "[1, 2, 3]",
+                "-3/4",
+                "abs(x - 1)",
+                "5!",
+                "2*x*y",
+                "sqrt(x)/(y + 1)"
+            })
+    void everyShapeWritesSomethingBalanced(String source) {
+        String out = typst(source);
+        assertFalse(out.isBlank(), source);
+        long open = out.chars().filter(c -> c == '(').count();
+        long close = out.chars().filter(c -> c == ')').count();
+        assertEquals(open, close, "unbalanced brackets in " + out);
+        // Typst has no backslash escapes in maths; one here means LaTeX leaked in.
+        assertFalse(out.contains("\\"), out);
     }
 }
