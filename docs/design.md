@@ -123,6 +123,27 @@ part of the mathematics; a loaded sheet answers with silence, which is true — 
 The alternative is a second thing on every `stack` line, and the format rests on Formatter and Parser
 being inverses.
 
+### Reading a result as the thing it is
+
+`FactorInteger(2^64 - 1)` comes back as seven pairs of integers. That is a faithful answer and an
+unreadable one, and it was drawn in matrix brackets — a claim about linear algebra. Set as
+`3·5·17·257·641·65537·6700417` it is the factorisation it actually is.
+
+This needs the **origin**, and is the reason provenance was worth having. The value alone cannot be
+told apart: `[[2, 2], [3, 1]]` typed by hand and `[[2, 2], [3, 1]]` returned by `FactorInteger` are
+the same expression, and guessing from shape would mis-set real matrices to fix this one. Knowing
+what produced it settles the question with no guessing at all — the two are drawn differently in the
+same window, and a test says so in both directions.
+
+A reading is **not addressable**. The tree being drawn is not the one on the stack, so a click
+resolving to a path inside it would hand a transform an address into an expression that does not
+exist — an edit applied to something the reader cannot see. It is rendered with a null root path,
+which is the same mechanism a reassembled product already used for the same reason.
+
+The recogniser is deliberately unforgiving: anything that is not exactly the expected shape gets no
+reading and is drawn as it always was. A reading that is sometimes wrong is worse than none, because
+it is a wrong answer in the confident voice of a right one.
+
 ### The other margin
 
 The rail says *whether* a value is exact. The right-hand margin says **how big it is**: `5/6` with

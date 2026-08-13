@@ -426,6 +426,16 @@ Session-only, deliberately. The `.calc` file saves the mathematics; a value's hi
 the mathematics, and adding it would mean a second thing on every `stack` line in a format that rests
 on `Formatter` and `Parser` being inverses.
 
+### Reading a result as the thing it is
+
+`FactorInteger(2^64 - 1)` is seven pairs of integers, which was drawn in matrix brackets. It is now
+set as `3·5·17·257·641·65537·6700417`.
+
+The origin is what makes this possible rather than a guess: `[[2, 2], [3, 1]]` typed by hand and the
+same list returned by `FactorInteger` are the same expression, and the window now draws them
+differently because it knows where each came from. A reading is not addressable — the tree being
+drawn is not the one on the stack, so nothing inside it can be selected and handed to a transform.
+
 ### How big is it
 
 An exact answer is the right answer and not always the useful one. Every stack row whose value has a

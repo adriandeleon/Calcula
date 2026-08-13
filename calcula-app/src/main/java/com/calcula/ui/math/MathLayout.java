@@ -84,17 +84,38 @@ public final class MathLayout {
      * <p>Always returns a {@link Region}, wrapping a bare leaf in a row when it has to — so callers get
      * one shape to lay out regardless of whether the formula happened to be a single letter.
      */
+    /**
+     * Set an expression that is a <b>reading</b> of a value rather than the value itself.
+     *
+     * <p>Nothing in the result is addressable. That is the point: the tree being drawn is not the one
+     * on the stack, so a click resolving to a path inside it would hand a transform an address into
+     * an expression that does not exist — an edit applied to something the user cannot see. Passing a
+     * null root path is the same mechanism {@link #product} already uses for a reassembled product,
+     * for the same reason.
+     */
+    public static Region renderReading(Expr e, MathStyle style) {
+        return render(e, style, null);
+    }
+
     public static Region render(Expr e, MathStyle style) {
+        return render(e, style, ExprPath.ROOT);
+    }
+
+    private static Region render(Expr e, MathStyle style, List<Integer> root) {
         // Here rather than only in Themes.apply: a formula is also rendered into the offscreen scene
         // the clipboard picture uses, which never applies a theme. The check is a volatile read.
         com.calcula.ui.Fonts.load();
-        Node node = layout(e, style, ExprPath.ROOT);
+        Node node = layout(e, style, root);
         if (node instanceof Region region) {
             return region;
         }
         Region wrapper = (Region) row(style, new Item(node, Atom.ORD));
         wrapper.setUserData(e);
-        wrapper.getProperties().put(PATH_KEY, ExprPath.ROOT);
+        // Only when there is an address to give it. A reading is not the value, so tagging its
+        // wrapper at the root would make the one node that IS addressable point at the wrong tree.
+        if (root != null) {
+            wrapper.getProperties().put(PATH_KEY, root);
+        }
         return wrapper;
     }
 
