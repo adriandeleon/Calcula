@@ -667,6 +667,16 @@ public final class CalcWindow {
         registry.register(
                 "trail.search", "Search the trail", "Filter the trail to the lines that match", this::searchTrail);
         registry.register(
+                "edit.rewrite",
+                "Rewrite with a rule",
+                "Apply the rule on the input line once — to the selected part, or to the top value",
+                () -> rewriteWithRule(false));
+        registry.register(
+                "edit.rewriteRepeatedly",
+                "Rewrite until it settles",
+                "Apply the rule on the input line over and over until nothing changes",
+                () -> rewriteWithRule(true));
+        registry.register(
                 "var.clear",
                 "Unbind variable",
                 "Forget what the name on the input line is bound to",
@@ -902,6 +912,16 @@ public final class CalcWindow {
                             null,
                             title + "   (" + chordFor(transformCommandId(head)) + ")",
                             () -> runCommand(transformCommandId(head)))));
+            // The open-ended one, beside the four fixed ones. It reads its rule from the input line,
+            // so the menu item is a reminder that the option exists and where the rule goes — which
+            // is the same job the toolbar's four labelled buttons do.
+            rewrite.getItems()
+                    .addAll(
+                            new SeparatorMenuItem(),
+                            menuItem(
+                                    null,
+                                    "With the rule on the input line   (" + chordFor("edit.rewrite") + ")",
+                                    () -> runCommand("edit.rewrite")));
             menu.getItems().addAll(rewrite, new SeparatorMenuItem());
         }
         menu.getItems()
@@ -933,6 +953,18 @@ public final class CalcWindow {
      * doing nothing is the only safe answer.
      */
     private void rewriteSelection(String head) {
+        transformSelection(current -> Exprs.call(head, current));
+    }
+
+    /**
+     * Apply a transformation to the selected part, in place.
+     *
+     * <p>Takes what to <em>ask</em> rather than a head, so a rewrite rule goes through exactly the
+     * path the four fixed transforms already take: the same staleness check, the same rebuild through
+     * {@link ExprPath}, the same single {@link Op.ReplaceAt}, the same following of the selection
+     * afterwards. A rule applied to a subterm is not a different feature from factoring one.
+     */
+    private void transformSelection(java.util.function.UnaryOperator<Expr> ask) {
         if (selected == null) {
             flash("nothing is selected — click a part of a formula first");
             return;
@@ -945,7 +977,7 @@ public final class CalcWindow {
                 m.record(new TrailEntry(TrailEntry.Kind.NOTE, "that part has moved; nothing was changed"));
                 return;
             }
-            Expr transformed = askEngine(Exprs.call(head, current), m.modes());
+            Expr transformed = askEngine(ask.apply(current), m.modes());
             Expr rebuilt = ExprPath.replace(entry, target.at().path(), transformed);
             if (rebuilt == null || rebuilt.equals(entry)) {
                 m.record(new TrailEntry(TrailEntry.Kind.NOTE, "nothing to change there"));
@@ -1301,6 +1333,71 @@ public final class CalcWindow {
                 && !entry.text().isBlank();
     }
 
+    /**
+     * Apply the rule on the input line.
+     *
+     * <p>To the <b>selected part</b> when there is one, and to the top of the stack otherwise. That is
+     * the whole reason this is worth having here rather than as a function somebody types: a rule
+     * applied to one subterm of an answer, landing back in the answer it came from, is the thing a
+     * shell structurally cannot offer.
+     *
+     * <p>The rule itself is read, not evaluated, and it has to be: {@code x -> 3} handed to an
+     * evaluator is a question about what {@code x} is, and the answer would be the rule already
+     * applied to itself.
+     */
+    private void rewriteWithRule(boolean repeatedly) {
+        String typed = input.getText().trim();
+        if (typed.isEmpty()) {
+            onMachine(m ->
+                    m.recordError("type a rule on the input line first, like x -> 3 or sin(a_)^2 -> 1 - cos(a)^2"));
+            return;
+        }
+        Expr rule;
+        try {
+            rule = Parser.parse(typed);
+        } catch (RuntimeException e) {
+            onMachine(m -> m.recordError(describe(e)));
+            return;
+        }
+        if (!looksLikeRule(rule)) {
+            onMachine(m -> m.recordError("that is not a rule — a rule looks like old -> new"));
+            return;
+        }
+        input.clear();
+        String head = repeatedly ? "ReplaceRepeated" : "ReplaceAll";
+        if (selected != null) {
+            transformSelection(current -> Exprs.call(head, current, rule));
+            return;
+        }
+        onMachine(m -> {
+            Expr top = m.state().at(1);
+            Expr rewritten = askEngine(Exprs.call(head, top, rule), m.modes());
+            if (rewritten.equals(top)) {
+                m.record(new TrailEntry(TrailEntry.Kind.NOTE, "the rule matched nothing"));
+                return;
+            }
+            m.apply(new Op.ReplaceAt(1, rewritten));
+        });
+    }
+
+    /**
+     * Whether an expression is a rule, or a list of them.
+     *
+     * <p>Checked before anything is asked of the engine, because the failure is otherwise silent:
+     * {@code ReplaceAll} of something that is not a rule returns its input unchanged, which is
+     * indistinguishable from a rule that simply did not match — and one of those is a typo worth
+     * hearing about.
+     */
+    static boolean looksLikeRule(Expr e) {
+        if (e instanceof Expr.Call c) {
+            if (c.head().equals("Rule") || c.head().equals("RuleDelayed")) {
+                return c.arity() == 2;
+            }
+            return Exprs.isList(e) && !c.args().isEmpty() && c.args().stream().allMatch(CalcWindow::looksLikeRule);
+        }
+        return false;
+    }
+
     /** Put the keyboard in the trail's filter, with whatever is there selected so it can be replaced. */
     private void searchTrail() {
         trailFilter.requestFocus();
@@ -1458,6 +1555,9 @@ public final class CalcWindow {
         // Calc's own chord for last-args, and the one place a bare Meta-Return is free.
         keymap.bind("M-RET", "edit.lastArgs");
         keymap.bind("M-e", "edit.editEntry");
+        // Calc's a r, one modifier out. The repeating form is on the palette: it is the one that can
+        // run away, and it should be asked for by name rather than fallen onto.
+        keymap.bind("M-r", "edit.rewrite");
         keymap.bind("M-t y", "trail.yank");
         keymap.bind("M-t s", "trail.search");
         keymap.bind("M-v p", "stack.pack");

@@ -78,6 +78,13 @@ public final class Formatter {
     }
 
     private static String call(Call c, int parentPrec, boolean weakSide) {
+        // Ahead of everything: a pattern is an atom to read even though it is a call to hold, and
+        // printing it as Pattern(x, Blank()) would be a form the parser can read back but nobody
+        // would type.
+        String pattern = Patterns.write(c);
+        if (pattern != null) {
+            return pattern;
+        }
         switch (c.head()) {
             case "Plus" -> {
                 if (c.arity() >= 2) {

@@ -370,6 +370,30 @@ the map was reachable. Binding something to `x` must not change what `deriv(x^2,
 never rewrites the stack; `C-x e` is where you ask for the substitution, and it is one pass, so a
 binding that mentions itself terminates instead of recursing.
 
+### Rewrite rules
+
+`M-r` applies the rule on the input line — to the **selected part** when there is one, and to the top
+value otherwise:
+
+```
+sqrt(1 - x^2) + arcsin(x)      select 1 - x^2
+1 - x^2 -> (1 - x)*(1 + x)     M-r
+sqrt((1 - x)*(1 + x)) + arcsin(x)
+```
+
+A pattern is written `x_`, and the notation for it cost nothing: the lexer already reads an underscore
+as an identifier character, so `x_` arrives as one name and the parser turns a **trailing** underscore
+into `Pattern(x, Blank())` — which is not a translation but the engine's own form, so a pattern
+reaches Symja through the same totality that carries any unrecognised head. The adapter needed no
+change at all. `my_var` is still a variable; only trailing underscores mean anything.
+
+The rule is read rather than evaluated, and it has to be: `x -> 3` handed to an evaluator is a
+question about what `x` is. A line that is not a rule is refused before the engine is asked, because
+from there a rule that matched nothing and a thing that was never a rule are the same answer.
+
+Not yet: `:>` and `/;`, so a conditional rule has to be written in function form —
+`RuleDelayed(n_, Condition(n^2, n > 2))` — which works, because an unrecognised head passes through.
+
 ### Working the stack
 
 `M-RET` puts back what the top value was worked out from, keeping the answer — the thing you actually

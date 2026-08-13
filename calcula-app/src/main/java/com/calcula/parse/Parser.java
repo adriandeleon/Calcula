@@ -176,7 +176,10 @@ public final class Parser {
                     List<Expr> args = arguments(Kind.RPAREN, ")");
                     return Exprs.call(Names.toHead(t.text()), args);
                 }
-                return Exprs.sym(Names.toHead(t.text()));
+                // Before the name table, and deliberately: a pattern is a shape rather than a name,
+                // and nothing should be translating x_ as though somebody meant a function called x_.
+                Expr pattern = Patterns.forName(t.text());
+                return pattern != null ? pattern : Exprs.sym(Names.toHead(t.text()));
             }
             case LPAREN -> {
                 Expr inner = expression();
