@@ -451,6 +451,15 @@ A ratio never reaches the engine — `BigDecimal` divides it here. The CAS is a 
 a precondition, so a window with no engine still adds up fractions, and it should still be able to
 say how big the answer is.
 
+### Long numbers
+
+A run of five or more digits is grouped in threes with a thin space:
+`18 446 744 073 709 551 615`. Not a comma — a comma is a list separator everywhere else here, and
+`[1,234, 5]` would be genuinely ambiguous. Four digits is a year and stays one word.
+
+Display only. It happens in the layout and not in `Formatter`, whose job is producing something the
+parser can read back, so copying, exporting and saving are untouched.
+
 ### Giving up on a computation
 
 `C-g` already meant "abandon what I am in the middle of" for a half-entered chord. It now means the

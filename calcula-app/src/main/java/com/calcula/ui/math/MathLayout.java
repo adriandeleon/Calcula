@@ -214,8 +214,10 @@ public final class MathLayout {
     private static Node layout(Expr e, MathStyle style, List<Integer> path) {
         Node node =
                 switch (e) {
-                    case Int n -> number(n.value().toString(), style);
-                    case Flt f -> number(f.value().toPlainString(), style);
+                    // Grouped here rather than in the formatter: this is how the number is READ,
+                    // and the formatter's job is producing something the parser can read back.
+                    case Int n -> number(DigitGroups.group(n.value().toString()), style);
+                    case Flt f -> number(DigitGroups.group(f.value().toPlainString()), style);
                     case Rat r -> rational(r, style);
                     case Sym s -> symbol(s, style);
                     case Call c -> call(c, style, path);
