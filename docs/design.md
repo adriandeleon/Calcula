@@ -144,6 +144,23 @@ The recogniser is deliberately unforgiving: anything that is not exactly the exp
 reading and is drawn as it always was. A reading that is sometimes wrong is worse than none, because
 it is a wrong answer in the confident voice of a right one.
 
+### Long numbers
+
+`18446744073709551615` is twenty digits nobody counts correctly on the first try, so a run of five or
+more is grouped in threes with a **thin space**: `18 446 744 073 709 551 615`.
+
+Not a comma. A comma is a list separator everywhere else in this window — inside `[1, 2, 3]`, inside
+`f(x, y)` — and using it inside a single number as well would make `[1,234, 5]` genuinely ambiguous.
+A thin space cannot be mistaken for anything, which is why it is the SI convention.
+
+Five, because four digits is a year and wants to stay one word: `2 026` reads as two numbers. Only
+the integer part is grouped; a number grouped on both sides of the point is harder to read, not
+easier.
+
+Display only, and it happens in the layout rather than in `Formatter` — the formatter's job is
+producing something the parser can read back, and this is how the number is *read*. Copying,
+exporting and saving are untouched.
+
 ### The other margin
 
 The rail says *whether* a value is exact. The right-hand margin says **how big it is**: `5/6` with

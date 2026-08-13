@@ -1175,6 +1175,12 @@ public final class CalcWindow {
         if (result.outcome() == KeyDispatcher.Outcome.PENDING) {
             setPrompt(result.sequence() + "-", true);
         } else if (result.outcome() != KeyDispatcher.Outcome.RAN) {
+            // C-g already meant "abandon what I am in the middle of" for a half-entered chord. A
+            // computation is the same thing at a larger scale, and until now it was the one thing in
+            // the window that could not be got out of.
+            if (result.outcome() == KeyDispatcher.Outcome.CANCELLED && inFlight > 0) {
+                cancelWork();
+            }
             setPrompt("›", false);
         }
     }
@@ -1309,6 +1315,18 @@ public final class CalcWindow {
      * <p>Marshalled onto the FX thread rather than assumed to be on it: {@code setEngine} reports from
      * the loader thread, and a counter touched from two threads is a counter that drifts.
      */
+    /**
+     * Stop waiting for the engine.
+     *
+     * <p>The computation is not stopped — nothing can stop it, which is measured rather than assumed
+     * — so this says "given up on" rather than "cancelled". The difference matters on a machine that
+     * suddenly has a core busy with an answer nobody is going to read.
+     */
+    private void cancelWork() {
+        engine.cancel();
+        flash("given up on that — it may keep running for a while");
+    }
+
     private void beginWork() {
         if (!Platform.isFxApplicationThread()) {
             Platform.runLater(this::beginWork);
