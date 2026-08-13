@@ -98,6 +98,20 @@ public sealed interface Op {
      */
     record Unpack() implements Op {}
 
+    /**
+     * Push back what the top value was worked out from. Calc's {@code M-RET}.
+     *
+     * <p>Undo restores the <em>state</em>; this restores the <em>inputs</em>, which is what you want
+     * after a mistyped operator: the answer stays, and its arguments come back so a different
+     * operation can be tried on them.
+     *
+     * <p>Takes nothing, because it reads what is already recorded. Every entry carries the expression
+     * it came from, so the arguments are the origin call's arguments — which means this works on a
+     * value from any point in the session rather than only on the most recent command, and needed no
+     * new state at all.
+     */
+    record LastArgs() implements Op {}
+
     /** Replace the top value with the result of evaluating it again — Calc's {@code =}. */
     record Evaluate() implements Op {}
 

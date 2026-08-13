@@ -181,6 +181,18 @@ public final class Machine {
                 }
                 yield from.withoutVariable(u.name());
             }
+            case Op.LastArgs ignored -> {
+                require(from, 1);
+                Expr origin = from.entryAt(1).origin();
+                if (!(origin instanceof Expr.Call call) || call.args().isEmpty()) {
+                    throw new MachineException("nothing is recorded about where the top value came from");
+                }
+                List<CalcState.Entry> next = from.mutableEntries();
+                for (Expr arg : call.args()) {
+                    next.add(CalcState.Entry.from(arg, origin));
+                }
+                yield from.withEntries(next);
+            }
             case Op.Unpack ignored -> {
                 require(from, 1);
                 List<CalcState.Entry> next = from.mutableEntries();

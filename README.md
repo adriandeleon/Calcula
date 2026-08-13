@@ -370,6 +370,24 @@ the map was reachable. Binding something to `x` must not change what `deriv(x^2,
 never rewrites the stack; `C-x e` is where you ask for the substitution, and it is one pass, so a
 binding that mentions itself terminates instead of recursing.
 
+### Working the stack
+
+`M-RET` puts back what the top value was worked out from, keeping the answer — the thing you actually
+want after a mistyped operator, where undo restores the state and this restores the inputs. It needed
+no new state: every entry already carries the expression it came from, so the arguments are the origin
+call's arguments, which also means it works on a value from any point in the session rather than only
+on the most recent command.
+
+`M-e` takes the top value onto the input line to change it. The entry really comes off the stack and
+really is on the line — not copied with the original left behind, and not held in a hidden editing
+mode the next keystroke has to know about — so submitting goes through the ordinary reader and `$`
+references, RPN entry and evaluation all keep working with no second path to drift. Abandoning the
+edit leaves the value off the stack; undo brings it back.
+
+`M-t y` puts the selected trail line back on the stack, and `M-t s` searches the trail. Only an input
+or a result is offered: a note is prose about the calculator, and a menu item that failed when picked
+would be worse than its absence.
+
 ### Vectors on the stack
 
 `M-v p` takes the top values and makes one list of them — the count off the input line, two if it is
