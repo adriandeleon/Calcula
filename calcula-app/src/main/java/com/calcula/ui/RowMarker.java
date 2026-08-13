@@ -4,6 +4,7 @@ import com.calcula.expr.Expr;
 import com.calcula.expr.Exprs;
 import com.calcula.parse.Formatter;
 import com.calcula.plot.PlotValue;
+import com.calcula.plot.SurfaceValue;
 
 /**
  * What a stack row's gutter says about the value beside it, and why.
@@ -35,7 +36,7 @@ public final class RowMarker {
      * colours for "this is not a final answer".
      */
     public static boolean unsettled(Expr value) {
-        return inexact(value) || heldName(value) != null;
+        return inexact(value) || heldName(value) != null || undrawnGraphics(value);
     }
 
     /**
@@ -49,7 +50,16 @@ public final class RowMarker {
      * is the thing being graphed.
      */
     public static boolean inexact(Expr value) {
-        return PlotValue.isPlot(value) ? Exprs.containsInexact(PlotValue.body(value)) : Exprs.containsInexact(value);
+        // A picture is judged by what it draws, never by the numbers describing where it was cropped.
+        // Those bounds are doubles, so asking the raw predicate marks every plot ever drawn — and a
+        // surface has four of them rather than two, so forgetting it here is the same bug twice.
+        if (PlotValue.isPlot(value)) {
+            return Exprs.containsInexact(PlotValue.body(value));
+        }
+        if (SurfaceValue.isSurface(value)) {
+            return Exprs.containsInexact(SurfaceValue.body(value));
+        }
+        return Exprs.containsInexact(value);
     }
 
     /**
@@ -84,6 +94,10 @@ public final class RowMarker {
             return held + " was not evaluated: the engine handed it back unchanged.\n"
                     + "Check the name and its arguments — C-h f lists everything callable.";
         }
+        if (undrawnGraphics(value)) {
+            return "This is a picture the engine made in three dimensions, and nothing here draws one.\n"
+                    + "Put the formula on the stack and use Surface instead.";
+        }
         if (inexact(value)) {
             return "Approximate: this value carries a floating-point number, so it is not exact.";
         }
@@ -103,6 +117,18 @@ public final class RowMarker {
             return null;
         }
         return "from: " + Formatter.format(origin);
+    }
+
+    /**
+     * A picture the engine made that this window cannot draw.
+     *
+     * <p>{@code Plot3D(...)} typed at the engine comes back as {@code Graphics3D}, and the scene
+     * reader accepts {@code Graphics} only — so it landed typeset, looking like a call that had not
+     * been evaluated. That is the silent no-op the rail exists to catch, arriving through a door
+     * nobody was watching.
+     */
+    static boolean undrawnGraphics(Expr value) {
+        return value instanceof Expr.Call c && "Graphics3D".equals(c.head());
     }
 
     /**

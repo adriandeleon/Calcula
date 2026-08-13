@@ -85,9 +85,12 @@ import com.calcula.plot.GraphicsScene;
 import com.calcula.plot.PlotAnalysis;
 import com.calcula.plot.PlotException;
 import com.calcula.plot.PlotValue;
+import com.calcula.plot.SurfaceSampler;
+import com.calcula.plot.SurfaceValue;
 import com.calcula.ui.math.MathLayout;
 import com.calcula.ui.math.MathStyle;
 import com.calcula.ui.plot.PlotCanvas;
+import com.calcula.ui.plot.SurfaceCanvas;
 
 /**
  * The main window: trail on the left, stack in the centre, mode line and echo area along the bottom.
@@ -143,6 +146,15 @@ public final class CalcWindow {
      * it, which is a different mistake from the one being fixed.
      */
     private static final double STACK_PLOT_MAX_WIDTH = 720;
+
+    /**
+     * A surface is taller than a curve.
+     *
+     * <p>A curve uses the height it is given; a surface spends some of it on the depth of the thing,
+     * so at 200 the mesh is a band rather than a shape. This is a floor like the width — the row
+     * measures its content, so the picture is free to be this tall.
+     */
+    private static final double STACK_SURFACE_HEIGHT = 300;
 
     /**
      * Space between the stack's gutter rail and the entry number.
@@ -404,6 +416,16 @@ public final class CalcWindow {
      * analysis rather than recomputing it.
      */
     private final java.util.Map<Expr, PlotAnalysis> plotAnalyses = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Sampled surfaces, by the value they belong to.
+     *
+     * <p>The same reason the pole analysis is cached, with more at stake: a cell is rebuilt on every
+     * recycle, and re-sampling would put 3,600 evaluations behind every scroll of the stack. Sampling
+     * belongs to the value, and the value does not change.
+     */
+    private final java.util.Map<Expr, SurfaceSampler.Grid> surfaceGrids =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     private volatile CasEngine engine = CasEngineLoader.unavailable("still loading");
     private volatile Reader reader = new AlgebraicReader();
@@ -706,6 +728,11 @@ public final class CalcWindow {
                 "Plot",
                 "Draw the top of the stack as a curve",
                 () -> onMachine(m -> plotInto(m, m.state().at(1))));
+        registry.register(
+                "plot.surface",
+                "Surface",
+                "Draw the top of the stack as a surface of two variables",
+                () -> onMachine(m -> surfaceInto(m, m.state().at(1))));
         registry.register("input.toggleModel", "Toggle entry model", "Switch between algebraic and RPN entry", () -> {
             reader = reader instanceof AlgebraicReader ? new RpnReader() : new AlgebraicReader();
             onMachine(m -> m.record(new TrailEntry(TrailEntry.Kind.NOTE, "entry: " + reader.id())));
@@ -851,6 +878,34 @@ public final class CalcWindow {
         Expr plot = PlotValue.of(value, PlotValue.inferVariable(value), -10, 10);
         plotAnalyses.put(plot, analyse(plot));
         m.apply(new Op.Push(plot));
+    }
+
+    /**
+     * Draw the top of the stack as a surface.
+     *
+     * <p>Runs on the worker, like plotting: the grid is 3,600 evaluations of a compiled closure, which
+     * is quick, but it is still work that does not belong on the thread drawing the window.
+     */
+    private void surfaceInto(Machine m, Expr value) {
+        if (SurfaceValue.isSurface(value)) {
+            m.record(new TrailEntry(TrailEntry.Kind.NOTE, "that is already a surface"));
+            return;
+        }
+        try {
+            List<String> vars = SurfaceValue.inferVariables(value);
+            Expr surface = SurfaceValue.of(value, vars.get(0), vars.get(1), -5, 5, -5, 5);
+            // Sampled once, here, and kept: turning it later re-projects what it already has.
+            surfaceGrids.put(
+                    surface,
+                    SurfaceSampler.sample(ExprCompiler.compile(value, vars.get(0), vars.get(1)), -5, 5, -5, 5));
+            m.apply(new Op.Push(surface));
+        } catch (PlotException e) {
+            m.record(new TrailEntry(TrailEntry.Kind.ERROR, e.getMessage()));
+        }
+    }
+
+    private void surfaceValue(Expr value) {
+        onMachine(m -> surfaceInto(m, value));
     }
 
     private void plotValue(Expr value) {
@@ -1617,6 +1672,7 @@ public final class CalcWindow {
         keymap.bind("C-x 1", "view.trail");
         keymap.bind("M-i", "input.toggleModel");
         keymap.bind("M-p", "plot.function");
+        keymap.bind("M-S-p", "plot.surface");
         // Both spellings: Chords emits Cmd- on macOS and C- elsewhere.
         keymap.bind("C-c", "edit.copy");
         keymap.bind("Cmd-c", "edit.copy");
@@ -1762,6 +1818,31 @@ public final class CalcWindow {
                     PlotValue.xMin(plot),
                     PlotValue.xMax(plot));
             canvas.setAnalysis(plotAnalyses.getOrDefault(plot, PlotAnalysis.NONE));
+        } catch (PlotException e) {
+            canvas.showMessage(e.getMessage());
+        }
+        return canvas;
+    }
+
+    /**
+     * A surface, drawn from the grid it was sampled with.
+     *
+     * <p>Never re-sampled here. A cell is rebuilt every time the row is recycled, so a sample in this
+     * method would be thousands of evaluations per scroll; if the grid is missing — a sheet loaded
+     * from a file, where the sampling was not saved with it — it is taken once and kept.
+     */
+    private Region surfaceFor(Expr surface) {
+        SurfaceCanvas canvas = new SurfaceCanvas(STACK_PLOT_WIDTH, STACK_SURFACE_HEIGHT);
+        try {
+            canvas.show(surfaceGrids.computeIfAbsent(
+                    surface,
+                    s -> SurfaceSampler.sample(
+                            ExprCompiler.compile(
+                                    SurfaceValue.body(s), SurfaceValue.xVariable(s), SurfaceValue.yVariable(s)),
+                            SurfaceValue.xMin(s),
+                            SurfaceValue.xMax(s),
+                            SurfaceValue.yMin(s),
+                            SurfaceValue.yMax(s))));
         } catch (PlotException e) {
             canvas.showMessage(e.getMessage());
         }
@@ -2217,19 +2298,22 @@ public final class CalcWindow {
 
                 // A picture rather than something set as mathematics. It has no baseline to sit the
                 // entry number on, which is why the two are aligned differently below.
-                boolean picture = PlotValue.isPlot(value) || GraphicsScene.isGraphics(value);
+                boolean picture =
+                        PlotValue.isPlot(value) || SurfaceValue.isSurface(value) || GraphicsScene.isGraphics(value);
 
                 // A list of pairs that FactorInteger produced is a factorisation, and knowing that
                 // needs the origin — the value alone cannot be told from a matrix somebody typed.
                 Expr reading = ResultShape.reading(value, entry.origin());
 
-                Region content = PlotValue.isPlot(value)
-                        ? plotFor(value)
-                        : GraphicsScene.isGraphics(value)
-                                ? sceneFor(value)
-                                : reading != null
-                                        ? MathLayout.renderReading(reading, mathStyle())
-                                        : MathLayout.render(value, mathStyle());
+                Region content = SurfaceValue.isSurface(value)
+                        ? surfaceFor(value)
+                        : PlotValue.isPlot(value)
+                                ? plotFor(value)
+                                : GraphicsScene.isGraphics(value)
+                                        ? sceneFor(value)
+                                        : reading != null
+                                                ? MathLayout.renderReading(reading, mathStyle())
+                                                : MathLayout.render(value, mathStyle());
                 content.getStyleClass().add("stack-value");
                 int position = stack.size() - getIndex();
                 if (reading == null) {
@@ -3579,6 +3663,11 @@ public final class CalcWindow {
     /** Visible for tests: what the strip above the input is currently showing. */
     public InputPreview.Preview previewShown() {
         return read(() -> previewHost.isVisible() ? lastPreview : InputPreview.QUIET);
+    }
+
+    /** Visible for tests: the grid a surface was sampled with, so a re-sample can be told from a reuse. */
+    public Object gridFor(Expr surface) {
+        return surfaceGrids.get(surface);
     }
 
     /** Visible for tests: the trail as it is displayed, sigils included. */
