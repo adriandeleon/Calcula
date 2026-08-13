@@ -139,10 +139,10 @@ polar, working. The README's own argument — that a mode which displays and cha
 answer the user has been told to expect — runs in reverse as well. A mode line with four entries reads
 as though those are the four that exist.
 
-**Stack ergonomics** ([#15](https://github.com/adriandeleon/Calcula/issues/15)) — last-args (`M-RET`),
-editing an entry in place, yanking a line back out of the trail, searching it. Last-args is the one
-worth naming: undo restores the *state*, last-args restores the *inputs*, and after a mistyped
-operator the second is what you wanted. The trail already records both.
+~~**Stack ergonomics**~~ ([#15](https://github.com/adriandeleon/Calcula/issues/15)) — done. `M-RET`
+needed no new state at all: every entry already carries the expression it came from, so the arguments
+are the origin call's arguments, which also makes it work on a value from any point in the session
+rather than only on the most recent command. `M-e` edits, `M-t y` yanks, `M-t s` searches.
 
 ### Structurally different, and not deficiencies
 
@@ -169,8 +169,18 @@ The three cheap ones are done. What is left, in the order I would take it:
    `M-s l`, and it turned up a real bug on the way: `CalcState` was finishing with `Map.copyOf`, so a
    session's bindings came back in an unspecified order and a saved sheet reshuffled itself.
 5. ~~**[#10](https://github.com/adriandeleon/Calcula/issues/10), pack and unpack the stack.**~~ Done.
-6. **[#7](https://github.com/adriandeleon/Calcula/issues/7), rewrite rules.** The large one, and the
-   one that would most change what Calcula is.
-7. **[#15](https://github.com/adriandeleon/Calcula/issues/15), stack ergonomics.** Last-args, editing
-   an entry, yanking from the trail — four small things that together are most of the difference
-   between a stack you operate and a stack you look at.
+6. ~~**[#7](https://github.com/adriandeleon/Calcula/issues/7), rewrite rules.**~~ Done.
+7. ~~**[#15](https://github.com/adriandeleon/Calcula/issues/15), stack ergonomics.**~~ Done.
+
+**Seven closed.** What is left divides cleanly. Three are self-contained and want no new machinery:
+[#13](https://github.com/adriandeleon/Calcula/issues/13) financial,
+[#12](https://github.com/adriandeleon/Calcula/issues/12) binary and radix,
+[#16](https://github.com/adriandeleon/Calcula/issues/16) the four remaining modes. Four are a new
+numeric kind each, and the first one done will say what the rest cost:
+[#5](https://github.com/adriandeleon/Calcula/issues/5) units (which needs notation first),
+[#8](https://github.com/adriandeleon/Calcula/issues/8) error forms,
+[#9](https://github.com/adriandeleon/Calcula/issues/9) intervals and friends,
+[#11](https://github.com/adriandeleon/Calcula/issues/11) dates. One is large and open-ended:
+[#14](https://github.com/adriandeleon/Calcula/issues/14), a user-extension path — though rewrite
+rules have taken the pressure off it, since teaching this calculator something new no longer means
+writing Java.
