@@ -116,13 +116,16 @@ missing, only unfindable; what was absent was the gesture. `M-v p` packs the top
 and `M-v u` unpacks one, so the list half of the engine finally has something to take. That was the
 last thing #6 was waiting on.
 
-**Binary and word operations** ([#12](https://github.com/adriandeleon/Calcula/issues/12)) — and, or,
-xor, shifts and rotates against a configurable word size, which is a mode because the operations are
-not meaningful without one.
+~~**Binary and word operations**~~ ([#12](https://github.com/adriandeleon/Calcula/issues/12)) — done,
+along with radix. Typing a number in a base (`16#ff`) and showing one in a base turned out to be
+separate features, which is what kept both cheap: entry is in the lexer and yields an ordinary
+integer, so a saved sheet never sees the spelling, and display is in the layout beside the float
+format.
 
-**Financial** ([#13](https://github.com/adriandeleon/Calcula/issues/13)) — pv, fv, npv, pmt, nper,
-rate, and three depreciation methods. Self-contained: ordinary functions of numbers, no new kind, no
-round-trip risk.
+~~**Financial**~~ ([#13](https://github.com/adriandeleon/Calcula/issues/13)) — done, and it opened the
+seam that #12 then reused: a place for functions this calculator implements itself, consulted inside
+the numeric fold and therefore working with no engine at all. Symja answers `TimeValue` and nothing
+else of it.
 
 **A user-extension path** ([#14](https://github.com/adriandeleon/Calcula/issues/14)) — keyboard macros
 with loops and conditionals, user-defined functions, `Z D` to bind one to a key. `CommandRegistry` is a
@@ -172,11 +175,8 @@ The three cheap ones are done. What is left, in the order I would take it:
 6. ~~**[#7](https://github.com/adriandeleon/Calcula/issues/7), rewrite rules.**~~ Done.
 7. ~~**[#15](https://github.com/adriandeleon/Calcula/issues/15), stack ergonomics.**~~ Done.
 
-**Seven closed.** What is left divides cleanly. Three are self-contained and want no new machinery:
-[#13](https://github.com/adriandeleon/Calcula/issues/13) financial,
-[#12](https://github.com/adriandeleon/Calcula/issues/12) binary and radix,
-[#16](https://github.com/adriandeleon/Calcula/issues/16) the four remaining modes. Four are a new
-numeric kind each, and the first one done will say what the rest cost:
+**Nine closed**, and the three self-contained ones are done. What is left is four that are a new
+numeric kind each — and the first one done will say what the rest cost:
 [#5](https://github.com/adriandeleon/Calcula/issues/5) units (which needs notation first),
 [#8](https://github.com/adriandeleon/Calcula/issues/8) error forms,
 [#9](https://github.com/adriandeleon/Calcula/issues/9) intervals and friends,
