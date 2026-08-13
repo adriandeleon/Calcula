@@ -2,7 +2,9 @@ package com.calcula.expr;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import com.calcula.expr.Expr.Call;
 import com.calcula.expr.Expr.Flt;
@@ -143,6 +145,38 @@ public final class Exprs {
 
     public static boolean isSymbol(Expr e, String name) {
         return e instanceof Sym s && s.name().equals(name);
+    }
+
+    /**
+     * Replace every bound symbol with what it is bound to.
+     *
+     * <p><b>One pass, and deliberately.</b> What a binding names is not re-substituted, so
+     * {@code n -> n + 1} answers {@code n + 1} rather than looping until the stack runs out. Emacs
+     * Calc reaches the same place by evaluating variables once per {@code =}; press it again and the
+     * next layer resolves, which is a gesture rather than a recursion nobody can bound.
+     *
+     * <p>The tree is returned <em>unchanged</em> when nothing matched — the same reference, not a copy
+     * of itself — because the caller uses identity to decide whether anything happened, and because
+     * rebuilding a formula that did not change is work every evaluation would otherwise pay.
+     */
+    public static Expr substitute(Expr e, Map<String, Expr> bindings) {
+        if (e == null || bindings == null || bindings.isEmpty()) {
+            return e;
+        }
+        return switch (e) {
+            case Sym s -> bindings.getOrDefault(s.name(), s);
+            case Call c -> {
+                List<Expr> args = new ArrayList<>(c.args().size());
+                boolean changed = false;
+                for (Expr arg : c.args()) {
+                    Expr next = substitute(arg, bindings);
+                    changed |= next != arg;
+                    args.add(next);
+                }
+                yield changed ? new Call(c.head(), args) : c;
+            }
+            default -> e; // a number binds to nothing
+        };
     }
 
     /**

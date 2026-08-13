@@ -35,6 +35,7 @@ public final class CommandGroups {
             new Group("File", "file."),
             new Group("Edit", "edit."),
             new Group("Stack", "stack."),
+            new Group("Variables", "var."),
             new Group("Mode", "mode."),
             new Group("Plot", "plot."),
             new Group("Help", "help."));

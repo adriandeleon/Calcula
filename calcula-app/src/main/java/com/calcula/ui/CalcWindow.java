@@ -65,6 +65,7 @@ import com.calcula.input.AlgebraicReader;
 import com.calcula.input.Reader;
 import com.calcula.input.ReadlineKeys;
 import com.calcula.input.RpnReader;
+import com.calcula.input.StackRefs;
 import com.calcula.key.KeyDispatcher;
 import com.calcula.key.Keymap;
 import com.calcula.machine.CalcState;
@@ -601,7 +602,25 @@ public final class CalcWindow {
                 "Show or hide the decimal beside an exact value",
                 this::toggleApproximations);
         registry.register(
-                "stack.evaluate", "Evaluate", "Re-evaluate the top value", () -> machineOp(new Op.Evaluate()));
+                "stack.evaluate",
+                "Evaluate",
+                "Work the top value out again, resolving stored variables",
+                () -> machineOp(new Op.Evaluate()));
+        registry.register(
+                "var.store",
+                "Store into variable",
+                "Bind the top value to the name on the input line, taking it off the stack",
+                () -> storeVariable(false));
+        registry.register(
+                "var.storeKeep",
+                "Store, keeping the value",
+                "Bind the top value to the name on the input line and leave it there",
+                () -> storeVariable(true));
+        registry.register(
+                "var.recall",
+                "Recall variable",
+                "Push what the name on the input line is bound to",
+                this::recallVariable);
         registry.register(
                 "edit.undo",
                 "Undo",
@@ -1069,6 +1088,93 @@ public final class CalcWindow {
         });
     }
 
+    /**
+     * Bind the top of the stack to the name typed on the input line.
+     *
+     * <p>The same minibuffer gesture as precision: type the name, press the key. Calc prompts for the
+     * name in the echo area, which is the same place — it just asks first, and asking first is a
+     * dialog by another route.
+     *
+     * <p>{@code keep} is Calc's {@code s s} against its {@code s t}: both bind, and only one takes the
+     * value away. On a stack that distinction is worth its two extra lines, because the value you have
+     * just named is usually the one you were about to use.
+     */
+    private void storeVariable(boolean keep) {
+        String name = variableNameOnInputLine();
+        if (name == null) {
+            return; // it has already said why
+        }
+        input.clear();
+        onMachine(m -> {
+            // One applyAll, so a keeping store is one undo step and not two.
+            m.applyAll(keep ? List.of(new Op.Dup(1), new Op.Store(name)) : List.of(new Op.Store(name)));
+            // Read the binding back out rather than remembering what was sent: what the state holds is
+            // what was stored, and a note that says otherwise is worse than no note.
+            Expr stored = m.state().variables().get(name);
+            m.record(new TrailEntry(TrailEntry.Kind.NOTE, name + " = " + Formatter.format(stored)));
+        });
+    }
+
+    /**
+     * Push what a name is bound to.
+     *
+     * <p>An unbound name is not an error — {@link Op.Recall} pushes the bare symbol, which is what lets
+     * you build an expression in terms of something not defined yet — but it is silent, and silence
+     * here is indistinguishable from having stored the wrong thing. So it says which one happened.
+     */
+    private void recallVariable() {
+        String name = variableNameOnInputLine();
+        if (name == null) {
+            return;
+        }
+        input.clear();
+        onMachine(m -> {
+            boolean bound = m.state().variables().containsKey(name);
+            m.apply(new Op.Recall(name));
+            if (!bound) {
+                m.record(
+                        new TrailEntry(TrailEntry.Kind.NOTE, name + " is not bound — the name itself is on the stack"));
+            }
+        });
+    }
+
+    /**
+     * The variable name on the input line, or null after reporting why there is not one.
+     *
+     * <p>Validated by <b>parsing it</b> rather than by a character rule written here. The lexer already
+     * decides what a name is, and a second rule beside it is one that can disagree — a name accepted
+     * here and read back as something else would bind a variable nothing could ever recall.
+     *
+     * <p>Two things a lone symbol can be and a variable cannot: a stack reference, since {@code $}
+     * starts a name as far as the lexer is concerned, and a constant, since binding {@code Pi} would
+     * have {@code =} quietly rewrite it everywhere it appears.
+     */
+    private String variableNameOnInputLine() {
+        String typed = input.getText().trim();
+        if (typed.isEmpty()) {
+            onMachine(m -> m.recordError("type a variable name on the input line, then press the key"));
+            return null;
+        }
+        Expr parsed;
+        try {
+            parsed = Parser.parse(typed);
+        } catch (RuntimeException e) {
+            parsed = null;
+        }
+        if (!(parsed instanceof Expr.Sym symbol) || StackRefs.isReference(symbol.name())) {
+            onMachine(m -> m.recordError("\"" + typed + "\" is not a variable name"));
+            return null;
+        }
+        if (CONSTANTS.contains(symbol.name())) {
+            onMachine(m -> m.recordError(symbol.name() + " is a constant and cannot be bound"));
+            return null;
+        }
+        return symbol.name();
+    }
+
+    /** Names that already mean something everywhere, and so are not available to bind. */
+    private static final Set<String> CONSTANTS = Set.of("Pi", "E", "I", "Infinity");
+
     /** Provisional bindings. Only chords appear here; plain letters have to keep typing. */
     private void installDefaultKeymap() {
         keymap.bind("RET", "input.submit");
@@ -1095,6 +1201,12 @@ public final class CalcWindow {
         keymap.bind("M-m p", "mode.precision");
         keymap.bind("M-m s", "mode.symbolic");
         keymap.bind("M-m f", "mode.fractions");
+        // Calc's s t / s s / s r, one modifier further out. A bare s cannot be a prefix here: this
+        // window has no separate minibuffer, so every plain letter has to keep reaching the input
+        // line — which is also where the name these three read comes from.
+        keymap.bind("M-s t", "var.store");
+        keymap.bind("M-s s", "var.storeKeep");
+        keymap.bind("M-s r", "var.recall");
         // M-x for the palette, as in Emacs. Both spellings of the settings chord, since Chords emits
         // Cmd- on macOS and C- everywhere else, and , is where every platform puts preferences.
         // Zoom, on the chords every application uses. Bound for the STACK: it is the surface being
