@@ -94,6 +94,18 @@ public final class Names {
         map("sum", "Sum");
         map("product", "Product");
 
+        // Money. Spreadsheet spellings, because that is where everybody has met them, and no CAS in
+        // this build implements any of them -- see Builtins.
+        map("pv", "PresentValue");
+        map("fv", "FutureValue");
+        map("pmt", "Payment");
+        map("nper", "Periods");
+        map("rate", "Rate");
+        map("npv", "NetPresentValue");
+        map("sln", "StraightLineDepreciation");
+        map("syd", "SumOfYearsDepreciation");
+        map("ddb", "DecliningBalanceDepreciation");
+
         // Constants. `pi` is safe to claim; `e` and `i` deliberately are NOT, because they are far too
         // useful as ordinary variable names — an index `i` is more common in practice than the
         // imaginary unit. Type E, I or Pi for the constants; those are already the stored names.
