@@ -1,10 +1,12 @@
 package com.calcula.machine;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.calcula.bits.Bitwise;
 import com.calcula.expr.Expr;
 import com.calcula.expr.Exprs;
 import com.calcula.finance.Finance;
@@ -39,7 +41,8 @@ public final class Builtins {
      * every other unfinished expression in this calculator does, rather than becoming an error the
      * user has to dismiss before they can finish typing.
      */
-    public static Expr apply(String head, List<Expr> args, MathContext mc) {
+    public static Expr apply(String head, List<Expr> args, Modes modes) {
+        MathContext mc = modes.mathContext();
         try {
             return switch (head) {
                 case "PresentValue" -> money(args, 4, mc, d -> Finance.presentValue(d[0], d[1], d[2], d[3], mc));
@@ -53,6 +56,14 @@ public final class Builtins {
                     money(args, 4, mc, d -> Finance.sumOfYears(d[0], d[1], d[2], d[3], mc));
                 case "DecliningBalanceDepreciation" ->
                     money(args, 5, mc, d -> Finance.decliningBalance(d[0], d[1], d[2], d[3], d[4], mc));
+                case "BitAnd" -> bits(args, 2, w -> Bitwise.and(w[0], w[1], modes.wordSize()));
+                case "BitOr" -> bits(args, 2, w -> Bitwise.or(w[0], w[1], modes.wordSize()));
+                case "BitXor" -> bits(args, 2, w -> Bitwise.xor(w[0], w[1], modes.wordSize()));
+                case "BitNot" -> bits(args, 1, w -> Bitwise.not(w[0], modes.wordSize()));
+                case "ShiftLeft" -> bits(args, 2, w -> Bitwise.shiftLeft(w[0], places(w[1]), modes.wordSize()));
+                case "ShiftRight" -> bits(args, 2, w -> Bitwise.shiftRight(w[0], places(w[1]), modes.wordSize()));
+                case "RotateLeft" -> bits(args, 2, w -> Bitwise.rotateLeft(w[0], places(w[1]), modes.wordSize()));
+                case "RotateRight" -> bits(args, 2, w -> Bitwise.rotateRight(w[0], places(w[1]), modes.wordSize()));
                 default -> null;
             };
         } catch (ArithmeticException e) {
@@ -98,6 +109,31 @@ public final class Builtins {
             amounts.add(amount);
         }
         return amounts.isEmpty() ? null : Exprs.of(Finance.netPresentValue(rate, amounts, mc));
+    }
+
+    /**
+     * One of the word operations, given exactly {@code arity} <b>whole</b> numbers.
+     *
+     * <p>Whole, and not merely numeric: there is no such thing as the bits of 2.5, and rounding one
+     * silently to find some would be an answer nobody asked for.
+     */
+    private static Expr bits(List<Expr> args, int arity, java.util.function.Function<BigInteger[], BigInteger> f) {
+        if (args.size() != arity) {
+            return null;
+        }
+        BigInteger[] values = new BigInteger[arity];
+        for (int at = 0; at < arity; at++) {
+            if (!(args.get(at) instanceof Expr.Int whole)) {
+                return null;
+            }
+            values[at] = whole.value();
+        }
+        return Exprs.of(f.apply(values));
+    }
+
+    /** A shift or rotate count, which has to fit in an int to mean anything. */
+    private static int places(BigInteger count) {
+        return count.intValueExact();
     }
 
     /** A number as a decimal, or null when it is not a number at all. */

@@ -40,7 +40,7 @@ public interface Evaluator {
      * <p>Anything it cannot do exactly — a non-integer power, a symbol, an unknown head — it returns
      * unfolded rather than approximating, leaving the decision to whatever runs next.
      */
-    Evaluator NUMERIC = (input, modes) -> foldNumeric(input, modes.mathContext());
+    Evaluator NUMERIC = (input, modes) -> foldNumeric(input, modes);
 
     /**
      * Fold arithmetically first, and hand anything that did not reduce to a number on to {@code engine}.
@@ -112,21 +112,22 @@ public interface Evaluator {
         return changed ? Exprs.call(c.head(), args) : e;
     }
 
-    private static Expr foldNumeric(Expr e, java.math.MathContext mc) {
+    private static Expr foldNumeric(Expr e, Modes modes) {
+        java.math.MathContext mc = modes.mathContext();
         if (!(e instanceof Call c)) {
             return e;
         }
         List<Expr> args = new ArrayList<>(c.arity());
         boolean allNumeric = true;
         for (Expr arg : c.args()) {
-            Expr folded = foldNumeric(arg, mc);
+            Expr folded = foldNumeric(arg, modes);
             args.add(folded);
             allNumeric &= folded instanceof Num;
         }
         // Before the all-numeric gate, because one of ours takes a LIST of numbers rather than a row
         // of them, and a list is a Call. Builtins answers null for anything that is not its business,
         // so the cost to every other expression is one switch that falls through.
-        Expr builtin = Builtins.apply(c.head(), args, mc);
+        Expr builtin = Builtins.apply(c.head(), args, modes);
         if (builtin != null) {
             return builtin;
         }

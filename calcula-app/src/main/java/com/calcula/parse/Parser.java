@@ -7,6 +7,7 @@ import java.util.List;
 
 import com.calcula.expr.Expr;
 import com.calcula.expr.Exprs;
+import com.calcula.machine.Modes;
 import com.calcula.parse.Lexer.Kind;
 import com.calcula.parse.Lexer.Token;
 
@@ -215,11 +216,35 @@ public final class Parser {
 
     private Expr number(Token t) {
         String text = t.text();
+        int hash = text.indexOf('#');
+        if (hash >= 0) {
+            return radixNumber(text, hash, t);
+        }
         // A decimal point or an exponent is the user asking for an inexact value; everything else
         // stays an exact integer, however long.
         boolean inexact = text.indexOf('.') >= 0 || text.indexOf('e') >= 0 || text.indexOf('E') >= 0;
         try {
             return inexact ? Exprs.of(new BigDecimal(text)) : Exprs.of(new BigInteger(text));
+        } catch (NumberFormatException e) {
+            throw new ParseException("malformed number '" + text + "'", t.pos());
+        }
+    }
+
+    /**
+     * {@code 16#ff} — a whole number written in a base.
+     *
+     * <p>Entry only. What comes back is an ordinary integer, so nothing downstream has to know this
+     * spelling exists and the round trip is unaffected: the formatter writes 255 and the parser reads
+     * it. Showing a number in a base is a display mode, and a different thing entirely.
+     */
+    private Expr radixNumber(String text, int hash, Token t) {
+        try {
+            int radix = Integer.parseInt(text.substring(0, hash));
+            if (radix < Modes.MIN_RADIX || radix > Modes.MAX_RADIX) {
+                throw new ParseException(
+                        "base must be between " + Modes.MIN_RADIX + " and " + Modes.MAX_RADIX + ": " + text, t.pos());
+            }
+            return Exprs.of(new BigInteger(text.substring(hash + 1), radix));
         } catch (NumberFormatException e) {
             throw new ParseException("malformed number '" + text + "'", t.pos());
         }

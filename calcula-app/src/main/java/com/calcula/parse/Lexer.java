@@ -68,6 +68,20 @@ final class Lexer {
         while (i < src.length() && Character.isDigit(src.charAt(i))) {
             i++;
         }
+        // Calc's radix notation: 16#ff, 2#1011. Taken here rather than in the parser because the
+        // digits after the # are letters, and the tokeniser would otherwise split ff off as a name.
+        if (i < src.length() && src.charAt(i) == '#') {
+            int save = i;
+            i++;
+            int digits = i;
+            while (i < src.length() && Character.isLetterOrDigit(src.charAt(i))) {
+                i++;
+            }
+            if (i > digits) {
+                return src.substring(start, i);
+            }
+            i = save; // a # with nothing usable after it is not ours
+        }
         if (i < src.length() && src.charAt(i) == '.') {
             i++;
             while (i < src.length() && Character.isDigit(src.charAt(i))) {

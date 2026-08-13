@@ -216,7 +216,7 @@ public final class MathLayout {
                 switch (e) {
                     // Grouped here rather than in the formatter: this is how the number is READ,
                     // and the formatter's job is producing something the parser can read back.
-                    case Int n -> number(DigitGroups.group(n.value().toString()), style);
+                    case Int n -> number(inBase(n.value(), style), style);
                     case Flt f -> number(DigitGroups.group(style.floats().format(f.value())), style);
                     case Rat r -> rational(r, style);
                     case Sym s -> symbol(s, style);
@@ -313,6 +313,20 @@ public final class MathLayout {
     /** An operator glyph together with the atom class that decides the space around it. */
     private static Item op(String text, MathStyle style, Atom atom) {
         return new Item(glyph(text, style, atom), atom);
+    }
+
+    /**
+     * A whole number, in the base the modes ask for.
+     *
+     * <p>Grouped only in base ten. Grouping in threes is a decimal convention — hexadecimal is read in
+     * fours and binary in eights — and threes applied to hex would make it harder to read rather than
+     * easier, which is the opposite of what grouping is for.
+     */
+    private static String inBase(java.math.BigInteger value, MathStyle style) {
+        if (style.radix() == com.calcula.machine.Modes.DECIMAL) {
+            return DigitGroups.group(value.toString());
+        }
+        return style.radix() + "#" + value.toString(style.radix());
     }
 
     private static Node rational(Rat r, MathStyle style) {

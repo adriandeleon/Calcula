@@ -70,7 +70,9 @@ public final class SettingsStore {
                 readInt(props, "modes.precision", d.modes().precision()),
                 readBool(props, "modes.symbolic", d.modes().symbolic()),
                 readBool(props, "modes.fractions", d.modes().fractions()),
-                readFloatFormat(props, d.modes().floats()));
+                readFloatFormat(props, d.modes().floats()),
+                readInt(props, "modes.wordSize", d.modes().wordSize()),
+                readInt(props, "modes.radix", d.modes().radix()));
         return new Settings(
                 props.getProperty("theme", d.themeId()),
                 props.getProperty("inputModel", d.inputModel()),
@@ -109,6 +111,8 @@ public final class SettingsStore {
         props.setProperty("modes.floatStyle", settings.modes().floats().style().id());
         props.setProperty(
                 "modes.floatDigits", Integer.toString(settings.modes().floats().digits()));
+        props.setProperty("modes.wordSize", Integer.toString(settings.modes().wordSize()));
+        props.setProperty("modes.radix", Integer.toString(settings.modes().radix()));
         props.setProperty("mathSize", Double.toString(settings.mathSize()));
         props.setProperty("trailSize", Double.toString(settings.trailSize()));
         props.setProperty("trailSplit", Double.toString(settings.trailSplit()));

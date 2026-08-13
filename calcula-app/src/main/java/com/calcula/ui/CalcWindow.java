@@ -45,6 +45,7 @@ import javafx.util.Duration;
 
 import com.calcula.AppInfo;
 import com.calcula.SessionLog;
+import com.calcula.bits.Bitwise;
 import com.calcula.cas.CasEngine;
 import com.calcula.cas.CasEngineLoader;
 import com.calcula.cas.CasException;
@@ -1137,6 +1138,21 @@ public final class CalcWindow {
                 m -> m.withFractions(!m.fractions()));
         registry.register(
                 "mode.precision", "Set precision", "Working digits for inexact arithmetic", this::setPrecision);
+        registry.register(
+                "mode.radix",
+                "Set the base",
+                "Show whole numbers in the base on the input line — 16 for hexadecimal, 2 for binary",
+                this::setRadix);
+        registry.register(
+                "mode.decimal",
+                "Back to base ten",
+                "Show whole numbers the usual way",
+                () -> applyRadix(Modes.DECIMAL));
+        registry.register(
+                "mode.wordSize",
+                "Set the word size",
+                "How wide a word is for the bitwise operations — the number on the input line",
+                this::setWordSize);
         floatCommand("mode.floatNormal", "Show every digit", FloatFormat.Style.NORMAL);
         floatCommand("mode.floatFixed", "Fixed decimal places", FloatFormat.Style.FIXED);
         floatCommand("mode.floatScientific", "Scientific notation", FloatFormat.Style.SCIENTIFIC);
@@ -1184,9 +1200,61 @@ public final class CalcWindow {
         });
     }
 
+    /** The base to show whole numbers in, from the input line. */
+    private void setRadix() {
+        Integer base = wholeOnInputLine(Modes.MIN_RADIX, Modes.MAX_RADIX, "a base");
+        if (base != null) {
+            applyRadix(base);
+        }
+    }
+
+    private void applyRadix(int base) {
+        onMachine(m -> {
+            m.apply(new Op.SetModes(m.modes().withRadix(base)));
+            m.record(new TrailEntry(TrailEntry.Kind.NOTE, m.modes().describe()));
+        });
+    }
+
+    /** How wide a word is, from the input line. */
+    private void setWordSize() {
+        Integer width = wholeOnInputLine(Bitwise.MIN_WORD_SIZE, Bitwise.MAX_WORD_SIZE, "a word size");
+        if (width == null) {
+            return;
+        }
+        onMachine(m -> {
+            m.apply(new Op.SetModes(m.modes().withWordSize(width)));
+            m.record(new TrailEntry(TrailEntry.Kind.NOTE, m.modes().describe()));
+        });
+    }
+
+    /**
+     * A whole number from the input line, or null after saying why there is not one.
+     *
+     * <p>The same gesture as precision and the digit count, and now shared by four commands rather
+     * than copied into each — the fourth copy is where the message stops matching what it validates.
+     */
+    private Integer wholeOnInputLine(int low, int high, String what) {
+        String typed = input.getText().trim();
+        int value;
+        try {
+            value = Integer.parseInt(typed);
+        } catch (NumberFormatException e) {
+            onMachine(m -> m.recordError("type " + what + " on the input line, then press the key"));
+            return null;
+        }
+        if (value < low || value > high) {
+            onMachine(m -> m.recordError(what + " must be between " + low + " and " + high));
+            return null;
+        }
+        input.clear();
+        return value;
+    }
+
     /** The style the stack is set in, carrying the display format the modes ask for. */
     private MathStyle mathStyle() {
-        return MathStyle.of(mathSize, shownModes == null ? FloatFormat.NORMAL : shownModes.floats());
+        return shownModes == null
+                ? MathStyle.of(mathSize)
+                : MathStyle.of(mathSize, shownModes.floats(), shownModes.radix());
     }
 
     private void modeCommand(String id, String title, String help, java.util.function.UnaryOperator<Modes> change) {
@@ -1539,6 +1607,8 @@ public final class CalcWindow {
         // n, x and e for normal, fixed and scientific: f is fractions and d is degrees, and e is how
         // the notation itself is written. Engineering stays on the palette rather than take a letter
         // that means nothing -- Calc users reach for d e, and there is no free e here.
+        keymap.bind("M-m b", "mode.radix");
+        keymap.bind("M-m w", "mode.wordSize");
         keymap.bind("M-m n", "mode.floatNormal");
         keymap.bind("M-m x", "mode.floatFixed");
         keymap.bind("M-m e", "mode.floatScientific");

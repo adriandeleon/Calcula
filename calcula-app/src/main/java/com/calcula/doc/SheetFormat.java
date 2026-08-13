@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import com.calcula.bits.Bitwise;
 import com.calcula.expr.Expr;
 import com.calcula.machine.FloatFormat;
 import com.calcula.machine.Modes;
@@ -61,6 +62,8 @@ public final class SheetFormat {
         out.append("mode precision ").append(modes.precision()).append('\n');
         out.append("mode symbolic ").append(modes.symbolic()).append('\n');
         out.append("mode fractions ").append(modes.fractions()).append('\n');
+        out.append("mode word ").append(modes.wordSize()).append('\n');
+        out.append("mode radix ").append(modes.radix()).append('\n');
         out.append("mode float ")
                 .append(modes.floats().style().id())
                 .append(' ')
@@ -123,6 +126,8 @@ public final class SheetFormat {
         boolean symbolic = Modes.DEFAULTS.symbolic();
         boolean fractions = Modes.DEFAULTS.fractions();
         FloatFormat floats = Modes.DEFAULTS.floats();
+        int wordSize = Modes.DEFAULTS.wordSize();
+        int radix = Modes.DEFAULTS.radix();
 
         for (int i = 1; i < lines.size(); i++) {
             String line = lines.get(i).strip();
@@ -151,13 +156,16 @@ public final class SheetFormat {
                         case "symbolic" -> symbolic = flag(value, at);
                         case "fractions" -> fractions = flag(value, at);
                         case "float" -> floats = floatFormat(value, at);
+                        case "word" -> wordSize = bounded(value, at, Bitwise.MIN_WORD_SIZE, Bitwise.MAX_WORD_SIZE);
+                        case "radix" -> radix = bounded(value, at, Modes.MIN_RADIX, Modes.MAX_RADIX);
                         default -> throw new SheetException("line " + at + ": unknown mode '" + setting + "'");
                     }
                 }
                 default -> throw new SheetException("line " + at + ": unknown keyword '" + keyword + "'");
             }
         }
-        return new Sheet(stack, variables, new Modes(angle, precision, symbolic, fractions, floats), trail);
+        return new Sheet(
+                stack, variables, new Modes(angle, precision, symbolic, fractions, floats, wordSize, radix), trail);
     }
 
     /**
@@ -182,6 +190,19 @@ public final class SheetFormat {
         } catch (IllegalArgumentException e) {
             // One catch covers both halves: not a number at all, and a number FloatFormat refuses.
             throw new SheetException("line " + at + ": '" + rest + "' is not a usable number of digits");
+        }
+    }
+
+    /** A whole number in a range, refused by line number like everything else here. */
+    private static int bounded(String value, int at, int low, int high) {
+        try {
+            int number = Integer.parseInt(value);
+            if (number < low || number > high) {
+                throw new SheetException("line " + at + ": " + number + " is outside " + low + " to " + high);
+            }
+            return number;
+        } catch (NumberFormatException e) {
+            throw new SheetException("line " + at + ": '" + value + "' is not a whole number");
         }
     }
 
