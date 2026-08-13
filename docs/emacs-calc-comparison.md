@@ -100,15 +100,23 @@ is closed. Two things make this less daunting than it sounds — Symja already h
 subterm with `ExprPath.replace` to put the answer back. Applying a rule *to the selected part* is the
 gesture, and half of it exists.
 
-**Extra numeric kinds** — error forms `x +/- s` with propagation
-([#8](https://github.com/adriandeleon/Calcula/issues/8)), intervals, modulo forms and HMS
-([#9](https://github.com/adriandeleon/Calcula/issues/9)), dates and times
-([#11](https://github.com/adriandeleon/Calcula/issues/11)). These are the ones pass-through cannot
-give: a kind, not a function. Each needs a place in the tower, arithmetic, a printed form, a typeset
-form, and `Formatter`/`Parser` inverses — because `.calc` rests on that property, a value that prints
-in a form the parser cannot read is data loss at *save* time. `Expr.Num` being sealed to three records
-means adding one is a deliberate widening with a compiler-enforced list of everywhere that must learn
-about it, which is the right way round.
+**Extra numeric kinds** — measurements ([#8](https://github.com/adriandeleon/Calcula/issues/8)) and
+ranges and rings ([#9](https://github.com/adriandeleon/Calcula/issues/9)) are **done**; dates
+([#11](https://github.com/adriandeleon/Calcula/issues/11)) and HMS are not.
+
+**This paragraph used to say each one needed a place in the number tower, and that was wrong.** None
+of them did. Everything structured here is a call, so a measurement is `PlusMinus(value, error)`, a
+range is `Interval({a, b})` and a ring member is `Modulo(value, modulus)` — `Expr` untouched,
+`Expr.Num` still sealed at three, and the round trip free because the formatter already writes calls.
+What each actually took was a pure arithmetic class, one `Builtins` arm, a lexer token, a parser
+level, a formatter case and a layout case.
+
+The interesting part is that the three did **not** agree on where the arithmetic belongs. Measurements
+and rings are folded locally and work with no engine — quadrature and modular inverses are a page of
+algebra each, and the engine has nothing better. Ranges are left entirely to the engine, because
+`sin(1 .. 2)` is `sin(1) .. 1` and no local implementation would know that the range contains a
+half-turn. Deciding that per kind, rather than once for all of them, is the thing to carry into
+[#11](https://github.com/adriandeleon/Calcula/issues/11).
 
 ~~**Vectors, on the stack rather than in an expression**~~
 ([#10](https://github.com/adriandeleon/Calcula/issues/10)) — done. The *functions* were never
@@ -175,8 +183,8 @@ The three cheap ones are done. What is left, in the order I would take it:
 6. ~~**[#7](https://github.com/adriandeleon/Calcula/issues/7), rewrite rules.**~~ Done.
 7. ~~**[#15](https://github.com/adriandeleon/Calcula/issues/15), stack ergonomics.**~~ Done.
 
-**Nine closed**, and the three self-contained ones are done. What is left is four that are a new
-numeric kind each — and the first one done will say what the rest cost:
+**Eleven closed.** Two numeric kinds are done and cost far less than this document predicted. What is
+left:
 [#5](https://github.com/adriandeleon/Calcula/issues/5) units (which needs notation first),
 [#8](https://github.com/adriandeleon/Calcula/issues/8) error forms,
 [#9](https://github.com/adriandeleon/Calcula/issues/9) intervals and friends,
