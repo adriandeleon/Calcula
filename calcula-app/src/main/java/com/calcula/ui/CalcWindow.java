@@ -170,6 +170,17 @@ public final class CalcWindow {
     private final ObservableList<CalcState.Entry> stack = FXCollections.observableArrayList();
 
     private final ObservableList<TrailEntry> trailLines = FXCollections.observableArrayList();
+
+    /**
+     * The whole trail, of which {@link #trailLines} is the part being shown.
+     *
+     * <p>Two lists rather than one, because a filter has to survive the next result arriving: every
+     * publish replaces what is on screen, and a filter that reset itself whenever the calculator did
+     * anything would be a filter you could not work under.
+     */
+    private List<TrailEntry> allTrail = List.of();
+
+    private final TextField trailFilter = new TextField();
     private final ListView<CalcState.Entry> stackView = new ListView<>(stack);
     private final ListView<TrailEntry> trailView = new ListView<>(trailLines);
     private final Label modes = new Label();
@@ -642,6 +653,20 @@ public final class CalcWindow {
         registry.register(
                 "stack.unpack", "Unpack a list", "Put the elements of the top list on the stack", this::unpackStack);
         registry.register(
+                "edit.lastArgs",
+                "Put the arguments back",
+                "Push what the top value was worked out from, keeping the answer",
+                () -> machineOp(new Op.LastArgs()));
+        registry.register(
+                "edit.editEntry",
+                "Edit the top value",
+                "Take the top value onto the input line to change it",
+                this::editTopEntry);
+        registry.register(
+                "trail.yank", "Put a trail line on the stack", "Push the selected line of the trail", this::yankTrail);
+        registry.register(
+                "trail.search", "Search the trail", "Filter the trail to the lines that match", this::searchTrail);
+        registry.register(
                 "var.clear",
                 "Unbind variable",
                 "Forget what the name on the input line is bound to",
@@ -946,14 +971,22 @@ public final class CalcWindow {
     }
 
     ContextMenu trailMenu(TrailEntry entry) {
-        return new ContextMenu(
-                menuItem("copy", "Copy line", () -> copyText(renderTrail(entry))),
-                menuItem(
-                        "copy",
-                        "Copy whole trail",
-                        () -> copyText(trailLines.stream()
-                                .map(CalcWindow::renderTrail)
-                                .collect(java.util.stream.Collectors.joining(System.lineSeparator())))));
+        ContextMenu menu = new ContextMenu();
+        // Offered only for a line that is notation. A note about the calculator is not a value, and a
+        // menu item that failed when picked would be worse than its absence.
+        if (isYankable(entry)) {
+            menu.getItems().add(menuItem("paste", "Put on the stack", () -> yankTrailEntry(entry)));
+        }
+        menu.getItems()
+                .addAll(
+                        menuItem("copy", "Copy line", () -> copyText(renderTrail(entry))),
+                        menuItem(
+                                "copy",
+                                "Copy whole trail",
+                                () -> copyText(trailLines.stream()
+                                        .map(CalcWindow::renderTrail)
+                                        .collect(java.util.stream.Collectors.joining(System.lineSeparator())))));
+        return menu;
     }
 
     /**
@@ -1214,6 +1247,67 @@ public final class CalcWindow {
     }
 
     /**
+     * Take the top value onto the input line, where it can be changed.
+     *
+     * <p>The entry really comes off the stack and really is on the input line — it is not copied
+     * there with the original left behind, and it is not held in a hidden editing state that the next
+     * keystroke has to know about. Submitting puts the edited value back through the ordinary reader,
+     * which is what makes {@code $} references, RPN entry and evaluation all keep working here for
+     * free rather than needing a second path that would drift from the first.
+     *
+     * <p>Abandoning the edit therefore leaves the value off the stack. Undo brings it back, and the
+     * text is still on the line — which is a smaller cost than a mode nothing else in this window has.
+     */
+    private void editTopEntry() {
+        onMachine(
+                m -> {
+                    Expr value = m.state().at(1); // throws, and says so, on an empty stack
+                    m.apply(new Op.Drop(1));
+                    String text = Formatter.format(value);
+                    Platform.runLater(() -> putOnInputLine(text));
+                },
+                null);
+    }
+
+    /**
+     * Push the selected trail line.
+     *
+     * <p>Only what is worth pushing: an input or a result is notation, and parses. An error or a note
+     * is prose about the calculator, and offering to put it on the stack would be offering something
+     * that fails.
+     */
+    private void yankTrail() {
+        TrailEntry selected = trailView.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            onMachine(m -> m.recordError("select a line of the trail first"));
+            return;
+        }
+        yankTrailEntry(selected);
+    }
+
+    void yankTrailEntry(TrailEntry entry) {
+        if (!isYankable(entry)) {
+            onMachine(m -> m.recordError("that line is a note, not a value"));
+            return;
+        }
+        String text = entry.text();
+        onMachine(m -> m.applyAll(reader.read(text, m.state())));
+    }
+
+    /** Whether a trail line holds notation rather than prose. */
+    static boolean isYankable(TrailEntry entry) {
+        return entry != null
+                && (entry.kind() == TrailEntry.Kind.INPUT || entry.kind() == TrailEntry.Kind.RESULT)
+                && !entry.text().isBlank();
+    }
+
+    /** Put the keyboard in the trail's filter, with whatever is there selected so it can be replaced. */
+    private void searchTrail() {
+        trailFilter.requestFocus();
+        trailFilter.selectAll();
+    }
+
+    /**
      * Make one list out of the top values.
      *
      * <p>This is the gesture that was missing, not the arithmetic. Every list function the engine has
@@ -1361,6 +1455,11 @@ public final class CalcWindow {
         keymap.bind("M-s l", "var.list");
         // Calc's v p and v u, one modifier out for the same reason M-s is: a bare letter has to keep
         // reaching the input line, which is where the count comes from.
+        // Calc's own chord for last-args, and the one place a bare Meta-Return is free.
+        keymap.bind("M-RET", "edit.lastArgs");
+        keymap.bind("M-e", "edit.editEntry");
+        keymap.bind("M-t y", "trail.yank");
+        keymap.bind("M-t s", "trail.search");
         keymap.bind("M-v p", "stack.pack");
         keymap.bind("M-v u", "stack.unpack");
         // Calc's s u, unstore.
@@ -1803,10 +1902,8 @@ public final class CalcWindow {
         shownVariables = snapshot.variables();
         stack.setAll(snapshot.entries());
         variableSheet.refresh();
-        trailLines.setAll(trail);
-        if (!trailLines.isEmpty()) {
-            trailView.scrollTo(trailLines.size() - 1);
-        }
+        allTrail = trail;
+        applyTrailFilter();
         refreshModeLine();
         menuBar.refresh(snapshot.modes(), reader instanceof RpnReader);
         setPrompt("›", false);
@@ -2320,15 +2417,54 @@ public final class CalcWindow {
      * a different question from how big the working stack should be, so it gets its own control rather
      * than following the stack's size.
      */
+    /**
+     * Show the part of the trail that matches the filter.
+     *
+     * <p>Matched against the rendered line rather than the stored text, so what is typed is compared
+     * with what can be seen: a result reads as {@code = 5} on screen, and a filter that quietly
+     * searched something else would look broken on the one example anybody tries first.
+     */
+    private void applyTrailFilter() {
+        String needle = trailFilter.getText() == null
+                ? ""
+                : trailFilter.getText().trim().toLowerCase(java.util.Locale.ROOT);
+        if (needle.isEmpty()) {
+            trailLines.setAll(allTrail);
+        } else {
+            trailLines.setAll(allTrail.stream()
+                    .filter(e ->
+                            renderTrail(e).toLowerCase(java.util.Locale.ROOT).contains(needle))
+                    .toList());
+        }
+        if (!trailLines.isEmpty()) {
+            trailView.scrollTo(trailLines.size() - 1);
+        }
+    }
+
     private Region buildTrailBar() {
         Label title = new Label("Trail");
         title.getStyleClass().add("trail-bar-title");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
+        trailFilter.setPromptText("Search");
+        trailFilter.getStyleClass().add("trail-filter");
+        trailFilter.setFocusTraversable(false);
+        trailFilter.textProperty().addListener((o, was, now) -> applyTrailFilter());
+        // Escape hands the keyboard back rather than leaving it in a box the calculator does not
+        // read from. Clearing first, so one key both abandons the search and undoes it.
+        trailFilter.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+            if (e.getCode() == javafx.scene.input.KeyCode.ESCAPE) {
+                trailFilter.clear();
+                input.requestFocus();
+                e.consume();
+            }
+        });
+
         HBox bar = new HBox(
                 title,
                 spacer,
+                trailFilter,
                 zoomButton("zoomOut", "trail.zoomOut", "Smaller trail text"),
                 zoomButton("zoomIn", "trail.zoomIn", "Larger trail text"));
         bar.setAlignment(Pos.CENTER_LEFT);
@@ -3289,6 +3425,16 @@ public final class CalcWindow {
     /** Visible for tests: where the caret sits on the input line. */
     public int caret() {
         return input.getCaretPosition();
+    }
+
+    /** Visible for tests: select a line of the trail, as a click would. */
+    public void selectTrailLine(int index) {
+        trailView.getSelectionModel().select(index);
+    }
+
+    /** Visible for tests: type into the trail's search box. */
+    public void typeInTrailFilter(String text) {
+        trailFilter.setText(text);
     }
 
     /** Visible for tests: what the input line currently holds. */

@@ -576,6 +576,15 @@
     -fx-background-color: -color-bg-subtle;
 }
 
+.trail-filter {
+    -fx-font-family: "Inter";
+    -fx-font-size: 10px;
+    -fx-pref-width: 110;
+    -fx-padding: 1 6 1 6;
+    -fx-background-radius: 7;
+    -fx-border-radius: 7;
+}
+
 .trail-bar-title {
     -fx-font-family: "Inter";
     -fx-font-size: 10px;

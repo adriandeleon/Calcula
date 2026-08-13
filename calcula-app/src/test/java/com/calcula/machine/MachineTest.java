@@ -321,6 +321,36 @@ class MachineTest {
         assertEquals(List.of("42"), display(m), "and the value it took is back where it was");
     }
 
+    // ---- last arguments --------------------------------------------------------------------
+
+    @Test
+    void lastArgsPutsBackWhatTheTopValueWasWorkedOutFrom() {
+        Machine m = machine();
+        m.applyAll(List.of(push("2"), push("3"), new Op.Apply("Plus", 2)));
+        m.apply(new Op.LastArgs());
+        assertEquals(List.of("5", "2", "3"), display(m), "the answer stays and the inputs come back");
+    }
+
+    @Test
+    void lastArgsWorksFromATypedExpressionToo() {
+        // The arguments are read off the entry's origin, so this is not limited to the most recent
+        // command the way Calc's is — any value that remembers where it came from can give them back.
+        Machine m = machine();
+        m.apply(push("2 + 3"));
+        m.apply(push("99"));
+        m.apply(new Op.Drop(1));
+        m.apply(new Op.LastArgs());
+        assertEquals(List.of("5", "2", "3"), display(m));
+    }
+
+    @Test
+    void aValueWithNoCallBehindItHasNoArgumentsToGiveBack() {
+        Machine m = machine();
+        m.apply(push("42"));
+        assertThrows(MachineException.class, () -> m.apply(new Op.LastArgs()));
+        assertEquals(List.of("42"), display(m));
+    }
+
     // ---- packing ---------------------------------------------------------------------------
 
     @Test
