@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import com.calcula.ui.WindowBounds;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -62,6 +63,32 @@ class LayoutSettingsTest {
                 Settings.MAX_TRAIL_SPLIT, Settings.DEFAULTS.withTrailSplit(0.99).trailSplit(), 0.001);
         assertEquals(
                 Settings.MIN_TRAIL_SPLIT, Settings.DEFAULTS.withTrailSplit(-1).trailSplit(), 0.001);
+    }
+
+    /**
+     * A window size survives; a window POSITION starts unset and stays a real number once saved,
+     * including a negative one — a display arranged to the left has negative coordinates, and
+     * clamping it would turn a real position into a wrong one.
+     */
+    @Test
+    void theWindowGeometryRoundTrips(@TempDir Path dir) {
+        SettingsStore store = new SettingsStore(dir);
+        assertTrue(Double.isNaN(Settings.DEFAULTS.windowX()), "nothing saved yet");
+
+        store.save(Settings.DEFAULTS.withWindow(-1800, -100, 1200, 800, false));
+        Settings back = store.load();
+        assertEquals(-1800, back.windowX(), 0.001);
+        assertEquals(-100, back.windowY(), 0.001);
+        assertEquals(1200, back.windowWidth(), 0.001);
+        assertEquals(800, back.windowHeight(), 0.001);
+    }
+
+    /** A hand-edited file should not be able to produce a window too small to use. */
+    @Test
+    void anAbsurdWindowSizeIsBroughtBackIntoRange() {
+        Settings tiny = Settings.DEFAULTS.withWindow(0, 0, 10, 10, false);
+        assertEquals(WindowBounds.MIN_WIDTH, tiny.windowWidth(), 0.001);
+        assertEquals(WindowBounds.MIN_HEIGHT, tiny.windowHeight(), 0.001);
     }
 
     /** Closing the trail must not forget how wide it was. */

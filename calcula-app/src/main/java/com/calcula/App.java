@@ -8,14 +8,18 @@ import java.util.logging.Logger;
 
 import javafx.animation.PauseTransition;
 import javafx.application.Application;
+import javafx.geometry.Rectangle2D;
 import javafx.scene.Scene;
 import javafx.scene.image.Image;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
 import com.calcula.cas.CasEngineLoader;
+import com.calcula.config.Settings;
 import com.calcula.ui.CalcWindow;
 import com.calcula.ui.Themes;
+import com.calcula.ui.WindowBounds;
 
 /** Entry point. */
 public final class App extends Application {
@@ -38,10 +42,63 @@ public final class App extends Application {
         launch(args);
     }
 
+    /**
+     * Put the window back where it was, if that is still somewhere reachable.
+     *
+     * <p>The size is always restored; the POSITION only when enough of the window would land on a
+     * screen that currently exists. A position saved on a monitor since unplugged, or on a laptop
+     * since undocked, otherwise opens the calculator somewhere it cannot be dragged back from — and
+     * the failure is total, because there is nothing on screen to grab.
+     *
+     * <p>Maximised is applied last and separately, so un-maximising returns to the remembered size
+     * rather than to whatever the maximised bounds happened to be.
+     */
+    private void restoreBounds(Stage stage) {
+        Settings saved = window.settings();
+        stage.setWidth(saved.windowWidth());
+        stage.setHeight(saved.windowHeight());
+        List<Rectangle2D> screens =
+                Screen.getScreens().stream().map(Screen::getVisualBounds).toList();
+        if (WindowBounds.usable(saved.windowX(), saved.windowY(), saved.windowWidth(), saved.windowHeight(), screens)) {
+            stage.setX(saved.windowX());
+            stage.setY(saved.windowY());
+        } else {
+            stage.centerOnScreen();
+        }
+        stage.setMaximized(saved.windowMaximized());
+    }
+
+    /**
+     * Follow the window around.
+     *
+     * <p>While maximised the stage reports the maximised geometry, which is the screen rather than a
+     * choice the user made — writing it down would mean un-maximising to a full-screen "window"
+     * forever after. So only the un-maximised geometry is recorded, and the flag is recorded beside
+     * it.
+     */
+    private void watchBounds(Stage stage) {
+        Runnable remember = () -> {
+            if (stage.isMaximized()) {
+                Settings s = window.settings();
+                window.rememberWindow(s.windowX(), s.windowY(), s.windowWidth(), s.windowHeight(), true);
+            } else {
+                window.rememberWindow(stage.getX(), stage.getY(), stage.getWidth(), stage.getHeight(), false);
+            }
+        };
+        stage.xProperty().addListener((o, a, b) -> remember.run());
+        stage.yProperty().addListener((o, a, b) -> remember.run());
+        stage.widthProperty().addListener((o, a, b) -> remember.run());
+        stage.heightProperty().addListener((o, a, b) -> remember.run());
+        stage.maximizedProperty().addListener((o, a, b) -> remember.run());
+    }
+
     @Override
     public void start(Stage stage) {
         window = new CalcWindow();
-        Scene scene = new Scene(window.getRoot(), 980, 660);
+        Scene scene = new Scene(
+                window.getRoot(),
+                window.settings().windowWidth(),
+                window.settings().windowHeight());
 
         // Owns the load order: Primer (user agent) -> theme tokens -> app.css. app.css is written
         // entirely in -color-*/-calc-* tokens, so applying it before the sheet that defines them
@@ -59,11 +116,16 @@ public final class App extends Application {
         stage.setOnCloseRequest(event -> {
             if (!window.confirmClose()) {
                 event.consume();
+                return;
             }
+            // The debounce is still holding the last move; closing is not a reason to lose it.
+            window.flushSettings();
         });
         stage.setScene(scene);
         stage.getIcons().addAll(icons());
+        restoreBounds(stage);
         stage.show();
+        watchBounds(stage);
         window.focusInput();
 
         // Off the FX thread on purpose: Symja's static init is ~650 ms, which would be 650 ms of blank

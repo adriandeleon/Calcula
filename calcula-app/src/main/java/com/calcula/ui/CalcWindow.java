@@ -2681,6 +2681,21 @@ public final class CalcWindow {
      * tall, in an application shaped like Emacs — and because a window whose proportions are a
      * constant fits one kind of work.
      */
+    /**
+     * Remember where the window is, on the same debounce the sizes use.
+     *
+     * <p>A drag fires continuously, so this is called dozens of times a second; writing the file on
+     * each one would be a save per pixel.
+     */
+    public void rememberWindow(double x, double y, double width, double height, boolean maximized) {
+        saveLater(settings.withWindow(x, y, width, height, maximized));
+    }
+
+    /** Flush whatever the debounce is still holding — the close button is not a reason to lose it. */
+    public void flushSettings() {
+        settingsStore.save(settings);
+    }
+
     private void toggleApproximations() {
         boolean showing = !settings.showApproximations();
         saveNow(settings.withApproximations(showing));
