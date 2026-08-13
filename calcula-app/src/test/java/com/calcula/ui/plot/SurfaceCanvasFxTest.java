@@ -101,6 +101,54 @@ class SurfaceCanvasFxTest {
                 || Math.abs(a.getOpacity() - b.getOpacity()) > 0.02;
     }
 
+    /** The share of the canvas covered by wireframe, as opposed to fill. */
+    private static double strokeShare(SurfaceCanvas canvas) throws Exception {
+        WritableImage image = FxTestSupport.callOnFx(() -> {
+            SnapshotParameters params = new SnapshotParameters();
+            params.setFill(Color.TRANSPARENT);
+            return canvas.snapshot(params, null);
+        });
+        Color curve = FxTestSupport.callOnFx(canvas::curveColour);
+        int width = (int) image.getWidth();
+        int height = (int) image.getHeight();
+        PixelReader pixels = image.getPixelReader();
+        int strokes = 0;
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                Color at = pixels.getColor(x, y);
+                if (Math.abs(at.getRed() - curve.getRed()) < 0.12
+                        && Math.abs(at.getGreen() - curve.getGreen()) < 0.12
+                        && Math.abs(at.getBlue() - curve.getBlue()) < 0.12) {
+                    strokes++;
+                }
+            }
+        }
+        return strokes / (double) (width * height);
+    }
+
+    /**
+     * Sampling a surface more finely must not draw more wireframe.
+     *
+     * <p>The two are separate resolutions: the fill wants a fine grid so the silhouette is clean and
+     * the lighting smooth, the wireframe wants a coarse one so the picture reads as a shape. Tied
+     * together, the default 60 samples put 60 lines each way on an oscillating function and they cross
+     * into moire — a hairball that is technically a correct drawing of the surface.
+     */
+    @Test
+    void aFinerSurfaceIsNotADenserWireframe() throws Exception {
+        double coarse = strokeShare(onScene(bowlWith(20), Themes.PLATE));
+        double fine = strokeShare(onScene(bowlWith(60), Themes.PLATE));
+        assertTrue(fine < coarse * 1.6, "60 samples drew far more line than 20: " + fine + " vs " + coarse);
+    }
+
+    private static SurfaceCanvas bowlWith(int steps) throws Exception {
+        return FxTestSupport.callOnFx(() -> {
+            SurfaceCanvas c = new SurfaceCanvas(320, 240);
+            c.show(SurfaceSampler.sample((x, y) -> x * x + y * y, -2, 2, -2, 2, steps));
+            return c;
+        });
+    }
+
     @Test
     void aSurfaceReachesTheCanvas() throws Exception {
         SurfaceCanvas canvas = onScene(bowl(), Themes.PLATE);
