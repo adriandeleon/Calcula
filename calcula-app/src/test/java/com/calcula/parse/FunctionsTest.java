@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -20,11 +21,19 @@ class FunctionsTest {
 
     @Test
     void aPrefixFindsTheNamesThatStartWithIt() {
-        List<String> names = Functions.startingWith("integ").stream()
+        List<String> names = Functions.startingWith("integr").stream()
                 .map(Functions.Doc::name)
                 .distinct()
                 .toList();
         assertEquals(List.of("integrate"), names);
+
+        // One letter shorter reaches three, and that is the point of a prefix rather than a guess:
+        // integ is as much the start of IntegerPart as of integrate.
+        List<String> shorter = Functions.startingWith("integ").stream()
+                .map(Functions.Doc::name)
+                .distinct()
+                .toList();
+        assertTrue(shorter.containsAll(List.of("integrate", "IntegerDigits", "IntegerPart")), shorter.toString());
     }
 
     @Test
@@ -68,6 +77,19 @@ class FunctionsTest {
             if (lowerCase) {
                 assertTrue(Names.isKnown(doc.name()), doc.name() + " is offered but not translated");
             }
+        }
+    }
+
+    @Test
+    void everySignatureIsSomethingTheParserCanRead() {
+        // The trap this exists for: Symja has Quantity and UnitConvert, so units look one table edit
+        // away — and they take a STRING, which this notation has no literal for. UnitConvert(Quantity(3,
+        // "m"), "ft") is not something anybody can type, and an entry offering it would fail the moment
+        // it was picked. Clicking a row puts the signature on the input line, so a signature that does
+        // not parse is a row that hands the user an error.
+        for (Functions.Doc doc : Functions.all()) {
+            String signature = doc.signature();
+            assertDoesNotThrow(() -> Parser.parse(signature), doc.name() + ": " + signature);
         }
     }
 
