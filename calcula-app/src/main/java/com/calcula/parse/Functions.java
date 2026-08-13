@@ -217,6 +217,13 @@ public final class Functions {
         // it is clicked, so a row that is not callable hands the user something that fails. The
         // spelling lives in the summary, which is where somebody looking for it will read it.
         group(
+                "Rings",
+                doc(
+                        "Modulo",
+                        "Modulo(value, modulus)",
+                        "A number in a ring — usually typed a mod m, and arithmetic stays in the ring"));
+
+        group(
                 "Ranges",
                 doc(
                         "Interval",
