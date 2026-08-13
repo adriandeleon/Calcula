@@ -46,11 +46,15 @@ public final class Formatter {
 
     private static final int PREC_RULE = 1;
     private static final int PREC_RELATION = 2;
-    private static final int PREC_ADDITIVE = 3;
-    private static final int PREC_MULTIPLICATIVE = 4;
-    private static final int PREC_UNARY = 5;
-    private static final int PREC_POWER = 6;
-    private static final int PREC_POSTFIX = 7;
+
+    /** Between a comparison and a sum, which is exactly where the parser puts it. */
+    private static final int PREC_ERROR = 3;
+
+    private static final int PREC_ADDITIVE = 4;
+    private static final int PREC_MULTIPLICATIVE = 5;
+    private static final int PREC_UNARY = 6;
+    private static final int PREC_POWER = 7;
+    private static final int PREC_POSTFIX = 8;
     private static final int PREC_ATOM = 100;
 
     private Formatter() {}
@@ -102,6 +106,16 @@ public final class Formatter {
                     return bracket(
                             "1/" + write(c.arg(0), PREC_MULTIPLICATIVE, true),
                             PREC_MULTIPLICATIVE,
+                            parentPrec,
+                            weakSide);
+                }
+            }
+            case "PlusMinus" -> {
+                if (c.arity() == 2) {
+                    // Its own precedence, between a comparison and a sum, matching where it parses.
+                    return bracket(
+                            write(c.arg(0), PREC_ERROR, false) + " +/- " + write(c.arg(1), PREC_ERROR, true),
+                            PREC_ERROR,
                             parentPrec,
                             weakSide);
                 }
@@ -225,6 +239,7 @@ public final class Formatter {
         return switch (head) {
             case "Rule" -> PREC_RULE;
             case "Equal", "Less", "Greater", "LessEqual", "GreaterEqual", "Unequal" -> PREC_RELATION;
+            case "PlusMinus" -> PREC_ERROR;
             case "Plus", "Subtract" -> PREC_ADDITIVE;
             case "Times", "Divide" -> PREC_MULTIPLICATIVE;
             case "Minus" -> PREC_UNARY;

@@ -212,6 +212,12 @@ public final class Functions {
         // and money paid is negative, as in every spreadsheet.
         // Every one of these depends on the word size, which is a mode: M-m w. Without a width, "not"
         // has no answer.
+        // Not a function but a shape, listed because there is nowhere else somebody would find it.
+        group(
+                "Measurements",
+                doc("+/-", "value +/- error", "A measurement and how far out it might be"),
+                doc("PlusMinus", "PlusMinus(value, error)", "The same thing written as a call"));
+
         group(
                 "Bits",
                 doc("BitAnd", "BitAnd(a, b)", "Bits set in both"),

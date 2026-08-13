@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.calcula.bits.Bitwise;
+import com.calcula.error.ErrorForm;
 import com.calcula.expr.Expr;
 import com.calcula.expr.Exprs;
 import com.calcula.finance.Finance;
@@ -56,6 +57,11 @@ public final class Builtins {
                     money(args, 4, mc, d -> Finance.sumOfYears(d[0], d[1], d[2], d[3], mc));
                 case "DecliningBalanceDepreciation" ->
                     money(args, 5, mc, d -> Finance.decliningBalance(d[0], d[1], d[2], d[3], d[4], mc));
+                // Arithmetic ON a measurement, which is why it is here rather than in
+                // applyNumeric: an error form is a Call, so the numeric fold never sees a row of
+                // numbers to fold. Answers null the moment no argument is a measurement, which is
+                // every ordinary sum in the calculator.
+                case "Plus", "Subtract", "Times", "Divide", "Minus", "Power" -> measured(head, args, mc);
                 case "BitAnd" -> bits(args, 2, w -> Bitwise.and(w[0], w[1], modes.wordSize()));
                 case "BitOr" -> bits(args, 2, w -> Bitwise.or(w[0], w[1], modes.wordSize()));
                 case "BitXor" -> bits(args, 2, w -> Bitwise.xor(w[0], w[1], modes.wordSize()));
@@ -135,6 +141,87 @@ public final class Builtins {
     private static int places(BigInteger count) {
         return count.intValueExact();
     }
+
+    /**
+     * Arithmetic where at least one argument is a measurement.
+     *
+     * <p>A plain number is a measurement with no error, so mixing the two needs no separate case —
+     * and a call where <em>nothing</em> is a measurement answers null immediately, leaving every
+     * ordinary sum in the calculator to the path it always took.
+     */
+    private static Expr measured(String head, List<Expr> args, MathContext mc) {
+        boolean any = args.stream().anyMatch(Builtins::isMeasurement);
+        if (!any) {
+            return null;
+        }
+        List<ErrorForm> forms = new ArrayList<>(args.size());
+        for (Expr arg : args) {
+            ErrorForm form = asMeasurement(arg, mc);
+            if (form == null) {
+                return null; // a symbol in there: leave the whole thing standing
+            }
+            forms.add(form);
+        }
+        ErrorForm result =
+                switch (head) {
+                    case "Plus" -> reduce(forms, (a, b) -> a.add(b, mc));
+                    case "Subtract" -> forms.size() == 2 ? forms.get(0).subtract(forms.get(1), mc) : null;
+                    case "Times" -> reduce(forms, (a, b) -> a.multiply(b, mc));
+                    case "Divide" -> forms.size() == 2 ? forms.get(0).divide(forms.get(1), mc) : null;
+                    case "Minus" -> forms.size() == 1 ? forms.get(0).negate() : null;
+                    case "Power" -> power(forms, args, mc);
+                    default -> null;
+                };
+        if (result == null) {
+            return null;
+        }
+        // A measurement whose error has gone is a number again — x - x keeps its error, but 0 * x
+        // genuinely has none, and carrying `+/- 0` around would be noise.
+        return result.isExact() ? Exprs.of(result.value()) : plusMinus(result);
+    }
+
+    /** Only a whole exponent, and only on the base: the exponent itself being uncertain is another problem. */
+    private static ErrorForm power(List<ErrorForm> forms, List<Expr> args, MathContext mc) {
+        if (forms.size() != 2 || !(args.get(1) instanceof Expr.Int exponent)) {
+            return null;
+        }
+        try {
+            return forms.get(0).power(exponent.value().intValueExact(), mc);
+        } catch (ArithmeticException e) {
+            return null;
+        }
+    }
+
+    private static ErrorForm reduce(List<ErrorForm> forms, java.util.function.BinaryOperator<ErrorForm> op) {
+        ErrorForm acc = forms.get(0);
+        for (ErrorForm next : forms.subList(1, forms.size())) {
+            acc = op.apply(acc, next);
+        }
+        return acc;
+    }
+
+    private static boolean isMeasurement(Expr e) {
+        return e instanceof Expr.Call c && c.head().equals(PLUS_MINUS) && c.arity() == 2;
+    }
+
+    /** A measurement, a plain number as one with no error, or null for anything else. */
+    private static ErrorForm asMeasurement(Expr e, MathContext mc) {
+        if (isMeasurement(e)) {
+            Expr.Call c = (Expr.Call) e;
+            BigDecimal value = decimal(c.arg(0), mc);
+            BigDecimal error = decimal(c.arg(1), mc);
+            return value == null || error == null ? null : new ErrorForm(value, error);
+        }
+        BigDecimal plain = decimal(e, mc);
+        return plain == null ? null : ErrorForm.exact(plain);
+    }
+
+    private static Expr plusMinus(ErrorForm form) {
+        return Exprs.call(PLUS_MINUS, Exprs.of(form.value()), Exprs.of(form.error()));
+    }
+
+    /** The head an error form is held as — a call, like everything else structured here. */
+    public static final String PLUS_MINUS = "PlusMinus";
 
     /** A number as a decimal, or null when it is not a number at all. */
     private static BigDecimal decimal(Expr e, MathContext mc) {

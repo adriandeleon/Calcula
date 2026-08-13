@@ -141,6 +141,12 @@ final class Lexer {
                 return new Token(Kind.COMMA, ",", start);
             }
             default -> {
+                // Three characters before two, for the same reason two come before one: +/- would
+                // otherwise lex as a plus and then a division by nothing.
+                if (i + 2 < src.length() && src.startsWith("+/-", i)) {
+                    i += 3;
+                    return new Token(Kind.OP, "+/-", start);
+                }
                 // Two-character operators first, or <= lexes as < followed by =.
                 if (i + 1 < src.length()) {
                     String two = src.substring(i, i + 2);

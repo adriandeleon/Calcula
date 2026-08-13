@@ -370,6 +370,21 @@ the map was reachable. Binding something to `x` must not change what `deriv(x^2,
 never rewrites the stack; `C-x e` is where you ask for the substitution, and it is one pass, so a
 binding that mentions itself terminates instead of recursing.
 
+### Measurements
+
+`2 +/- 0.1` is a measurement and how far out it might be, and arithmetic carries the error through:
+adding it to `3 +/- 0.2` gives `5 +/- 0.2236`, because errors combine in **quadrature**. That assumes
+the two measurements are independent, which is the assumption every laboratory makes and is worth
+stating — it is why `x - x` is not zero-error, and why `x^2` and `x*x` disagree. Squaring is one
+measurement raised; multiplying is two things combined. A calculator that made them agree would be
+inventing a correlation in one direction or losing one in the other.
+
+**It is not a new kind of number.** The tree has exactly three leaves and everything structured is a
+call, so a measurement is `PlusMinus(value, error)` like every other structure here — which meant no
+change to the arithmetic, the tower, or the round trip, and the propagation went in beside the money
+functions. Typed `+/-`, set as `±`: what a keyboard has and what mathematics looks like are different
+things, and the formatter keeps the first while the layout shows the second.
+
 ### Words and bases
 
 `M-m w` sets the word size and `M-m b` the base; `M-m d`… no, `mode.decimal` on the palette puts the
