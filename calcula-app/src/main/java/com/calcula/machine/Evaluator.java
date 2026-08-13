@@ -123,6 +123,13 @@ public interface Evaluator {
             args.add(folded);
             allNumeric &= folded instanceof Num;
         }
+        // Before the all-numeric gate, because one of ours takes a LIST of numbers rather than a row
+        // of them, and a list is a Call. Builtins answers null for anything that is not its business,
+        // so the cost to every other expression is one switch that falls through.
+        Expr builtin = Builtins.apply(c.head(), args, mc);
+        if (builtin != null) {
+            return builtin;
+        }
         if (!allNumeric) {
             return Exprs.call(c.head(), args);
         }

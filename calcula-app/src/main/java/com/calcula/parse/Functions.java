@@ -208,6 +208,20 @@ public final class Functions {
                 doc("RandomReal", "RandomReal()", "A number between 0 and 1"),
                 doc("Interval", "Interval([a, b])", "A range of values, and arithmetic carries the bounds"));
 
+        // Sign convention, and it is the only part anybody argues about: money received is positive
+        // and money paid is negative, as in every spreadsheet.
+        group(
+                "Money",
+                doc("pv", "pv(rate, periods, payment, future)", "What a payment stream is worth now"),
+                doc("fv", "fv(rate, periods, payment, present)", "What it will be worth later"),
+                doc("pmt", "pmt(rate, periods, present, future)", "The payment that clears an amount"),
+                doc("nper", "nper(rate, payment, present, future)", "How many periods that takes"),
+                doc("rate", "rate(periods, payment, present, future)", "The rate that makes it balance"),
+                doc("npv", "npv(rate, [amounts])", "Net present value of a stream, starting now"),
+                doc("sln", "sln(cost, salvage, life)", "Straight-line depreciation per period"),
+                doc("syd", "syd(cost, salvage, life, period)", "Sum-of-years depreciation for one period"),
+                doc("ddb", "ddb(cost, salvage, life, period, factor)", "Declining-balance, never past salvage"));
+
         group(
                 "Complex",
                 doc("re", "re(z)", "Real part"),
