@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import com.calcula.machine.FloatFormat;
 import com.calcula.machine.Modes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -32,6 +33,27 @@ class SettingsStoreTest {
         // indistinguishable from a broken window.
         assertEquals(Settings.MAX_MATH_SIZE, Settings.DEFAULTS.withMathSize(500).mathSize());
         assertEquals(Settings.MIN_MATH_SIZE, Settings.DEFAULTS.withMathSize(-3).mathSize());
+    }
+
+    @Test
+    void theDisplayFormatSurvivesTheFile() {
+        SettingsStore store = new SettingsStore(dir);
+        Settings written = Settings.DEFAULTS.withModes(
+                Modes.DEFAULTS.withFloats(new FloatFormat(FloatFormat.Style.ENGINEERING, 3)));
+        store.save(written);
+        assertEquals(written.modes().floats(), store.load().modes().floats());
+    }
+
+    @Test
+    void aDisplayFormatThisBuildDoesNotKnowFallsBackWithoutLosingTheDigits() throws IOException {
+        // Each half degrades on its own. A style from a newer build should open in the default and
+        // keep the digit count that was asked for, rather than resetting both or refusing to open.
+        SettingsStore store = new SettingsStore(dir);
+        store.save(Settings.DEFAULTS);
+        Path file = dir.resolve("settings.properties");
+        Files.writeString(file, Files.readString(file) + "\nmodes.floatStyle=hexadecimal\nmodes.floatDigits=7\n");
+        assertEquals(FloatFormat.Style.NORMAL, store.load().modes().floats().style());
+        assertEquals(7, store.load().modes().floats().digits());
     }
 
     // ------------------------------------------------------------------ the file

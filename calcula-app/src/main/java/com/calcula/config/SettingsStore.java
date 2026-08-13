@@ -11,6 +11,7 @@ import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.calcula.machine.FloatFormat;
 import com.calcula.machine.Modes;
 
 /**
@@ -68,7 +69,8 @@ public final class SettingsStore {
                 readAngle(props, d.modes().angle()),
                 readInt(props, "modes.precision", d.modes().precision()),
                 readBool(props, "modes.symbolic", d.modes().symbolic()),
-                readBool(props, "modes.fractions", d.modes().fractions()));
+                readBool(props, "modes.fractions", d.modes().fractions()),
+                readFloatFormat(props, d.modes().floats()));
         return new Settings(
                 props.getProperty("theme", d.themeId()),
                 props.getProperty("inputModel", d.inputModel()),
@@ -104,6 +106,9 @@ public final class SettingsStore {
         props.setProperty("modes.precision", Integer.toString(settings.modes().precision()));
         props.setProperty("modes.symbolic", Boolean.toString(settings.modes().symbolic()));
         props.setProperty("modes.fractions", Boolean.toString(settings.modes().fractions()));
+        props.setProperty("modes.floatStyle", settings.modes().floats().style().id());
+        props.setProperty(
+                "modes.floatDigits", Integer.toString(settings.modes().floats().digits()));
         props.setProperty("mathSize", Double.toString(settings.mathSize()));
         props.setProperty("trailSize", Double.toString(settings.trailSize()));
         props.setProperty("trailSplit", Double.toString(settings.trailSplit()));
@@ -137,6 +142,23 @@ public final class SettingsStore {
     }
 
     // ---- readers, each tolerant of nonsense -------------------------------------------------------
+
+    /**
+     * The display format, or the default when either half is missing or unreadable.
+     *
+     * <p>Both halves have to survive a bad value independently: a file naming a style this build has
+     * never heard of should open in the default and keep the digit count, rather than refuse or
+     * reset both.
+     */
+    private static FloatFormat readFloatFormat(Properties props, FloatFormat fallback) {
+        String raw = props.getProperty("modes.floatStyle");
+        FloatFormat.Style style = raw == null ? null : FloatFormat.Style.byId(raw.trim());
+        int digits = readInt(props, "modes.floatDigits", fallback.digits());
+        if (digits < FloatFormat.MIN_DIGITS || digits > FloatFormat.MAX_DIGITS) {
+            digits = fallback.digits();
+        }
+        return new FloatFormat(style == null ? fallback.style() : style, digits);
+    }
 
     private static Modes.Angle readAngle(Properties props, Modes.Angle fallback) {
         String raw = props.getProperty("modes.angle");

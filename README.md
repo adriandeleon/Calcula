@@ -335,8 +335,17 @@ exist to fix.
 The mode line is not decoration — each entry is tested for the thing it claims to do,
 because a mode that displays and changes nothing is a wrong answer the user has been told
 to expect. `M-m` is the prefix: `r`/`d`/`g` for the angle unit, `p` for precision, `s` for
-symbolic, `f` for fractions. Each is an operation on the machine, so a mode change lands in
-the undo history beside the answers it changed.
+symbolic, `f` for fractions, and `n`/`x`/`e` for how an inexact number is written — every
+digit, a fixed number of places, or scientific. Each is an operation on the machine, so a
+mode change lands in the undo history beside the answers it changed.
+
+The display format is **display**, and the distinction is load-bearing: the value keeps
+every digit it had, so `fix 2` shortens what reaches the screen and changes nothing that is
+saved. Rounding the value instead would be silent data loss the moment a sheet was written,
+because a stack is saved by formatting it — which is why `Formatter` never consults it and
+why the digit grouping added just before it lives in the layout for the same reason. The
+count comes off the input line, like precision: type 4, then `M-m x`. Engineering notation
+is on the palette rather than a chord, because there is no free letter that means it.
 
 Degree mode is a rewrite of the expression rather than a flag passed to the engine — every
 CAS works in radians. `sin(x)` becomes `sin(x · π/180)`, and `arcsin(x)`, which returns an
@@ -356,8 +365,9 @@ A sheet is a stack, a trail, the variables and the modes it was worked under. It
 `.calc` — one keyword per line, in the calculator's own notation:
 
 ```
-Calcula 1
-mode angle rad
+Calcula 2
+mode angle radians
+mode float fixed 4
 var n 42
 stack (x + 1)/(x - 1)
 trail input 1/3 + 1/6

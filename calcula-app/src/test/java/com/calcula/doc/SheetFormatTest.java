@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.calcula.expr.Expr;
+import com.calcula.machine.FloatFormat;
 import com.calcula.machine.Modes;
 import com.calcula.machine.TrailEntry;
 import com.calcula.parse.Parser;
@@ -76,6 +77,31 @@ class SheetFormatTest {
         Modes modes = new Modes(Modes.Angle.DEGREES, 40, false, false);
         Sheet loaded = roundTrip(new Sheet(List.of(), Map.of(), modes, List.of()));
         assertEquals(modes, loaded.modes());
+    }
+
+    @Test
+    void theDisplayFormatSurvives() {
+        Modes modes = Modes.DEFAULTS.withFloats(new FloatFormat(FloatFormat.Style.SCIENTIFIC, 4));
+        assertEquals(
+                modes,
+                roundTrip(new Sheet(List.of(), Map.of(), modes, List.of())).modes());
+    }
+
+    @Test
+    void aSheetFromBeforeTheDisplayFormatOpensAtTheDefault() {
+        // Format 1 had no float line. Reading one has to work, and has to leave the mode alone rather
+        // than inventing something: a missing display mode means the default, not an error.
+        Sheet loaded = SheetFormat.read("Calcula 1\nmode angle degrees\nmode precision 20\nstack 1/2\n");
+        assertEquals(FloatFormat.NORMAL, loaded.modes().floats());
+        assertEquals(Modes.Angle.DEGREES, loaded.modes().angle());
+    }
+
+    @Test
+    void aFloatLineThatMakesNoSenseIsRefusedRatherThanIgnored() {
+        assertThrows(
+                SheetException.class, () -> SheetFormat.read("Calcula 2\nmode float sideways 4\n"), "an unknown style");
+        assertThrows(
+                SheetException.class, () -> SheetFormat.read("Calcula 2\nmode float fixed nine\n"), "and its digits");
     }
 
     @Test

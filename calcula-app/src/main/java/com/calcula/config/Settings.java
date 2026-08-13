@@ -40,7 +40,7 @@ public record Settings(
      * Bumped whenever the shape changes, so an older build never silently reinterprets a newer file.
      * A file claiming a higher version is set aside rather than parsed — see {@link SettingsStore}.
      */
-    public static final int SCHEMA_VERSION = 5;
+    public static final int SCHEMA_VERSION = 6;
 
     public static final String ALGEBRAIC = "algebraic";
     public static final String RPN = "rpn";

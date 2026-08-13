@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import com.calcula.expr.Expr;
+import com.calcula.machine.FloatFormat;
 import com.calcula.machine.Modes;
 import com.calcula.machine.TrailEntry;
 import com.calcula.parse.Formatter;
@@ -25,6 +26,7 @@ import com.calcula.parse.Parser;
  * Calcula 1
  * mode angle rad
  * mode precision 12
+ * mode float sci 6
  * var n 42
  * stack x^2 + 1
  * trail input 1/3 + 1/6
@@ -59,6 +61,11 @@ public final class SheetFormat {
         out.append("mode precision ").append(modes.precision()).append('\n');
         out.append("mode symbolic ").append(modes.symbolic()).append('\n');
         out.append("mode fractions ").append(modes.fractions()).append('\n');
+        out.append("mode float ")
+                .append(modes.floats().style().id())
+                .append(' ')
+                .append(modes.floats().digits())
+                .append('\n');
 
         sheet.variables()
                 .forEach((name, value) -> out.append("var ")
@@ -115,6 +122,7 @@ public final class SheetFormat {
         int precision = Modes.DEFAULTS.precision();
         boolean symbolic = Modes.DEFAULTS.symbolic();
         boolean fractions = Modes.DEFAULTS.fractions();
+        FloatFormat floats = Modes.DEFAULTS.floats();
 
         for (int i = 1; i < lines.size(); i++) {
             String line = lines.get(i).strip();
@@ -142,13 +150,39 @@ public final class SheetFormat {
                         case "precision" -> precision = precision(value, at);
                         case "symbolic" -> symbolic = flag(value, at);
                         case "fractions" -> fractions = flag(value, at);
+                        case "float" -> floats = floatFormat(value, at);
                         default -> throw new SheetException("line " + at + ": unknown mode '" + setting + "'");
                     }
                 }
                 default -> throw new SheetException("line " + at + ": unknown keyword '" + keyword + "'");
             }
         }
-        return new Sheet(stack, variables, new Modes(angle, precision, symbolic, fractions), trail);
+        return new Sheet(stack, variables, new Modes(angle, precision, symbolic, fractions, floats), trail);
+    }
+
+    /**
+     * {@code float sci 6} — the style and how many digits.
+     *
+     * <p>Refused rather than defaulted when it is wrong, like every other line here. A sheet is
+     * strict about itself, and a display mode quietly reverting is a smaller loss than a stack entry
+     * quietly reverting only in the sense that nobody notices it either.
+     */
+    private static FloatFormat floatFormat(String value, int at) {
+        String name = word(value);
+        FloatFormat.Style style = FloatFormat.Style.byId(name);
+        if (style == null) {
+            throw new SheetException("line " + at + ": unknown float format '" + name + "'");
+        }
+        String rest = value.substring(name.length()).strip();
+        if (rest.isEmpty()) {
+            return FloatFormat.NORMAL.withStyle(style);
+        }
+        try {
+            return new FloatFormat(style, Integer.parseInt(rest));
+        } catch (IllegalArgumentException e) {
+            // One catch covers both halves: not a number at all, and a number FloatFormat refuses.
+            throw new SheetException("line " + at + ": '" + rest + "' is not a usable number of digits");
+        }
     }
 
     private static int readHeader(List<String> lines) {
