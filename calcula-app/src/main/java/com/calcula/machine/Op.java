@@ -69,12 +69,34 @@ public sealed interface Op {
         }
     }
 
+    /**
+     * Forget a binding. Calc's {@code s u}.
+     *
+     * <p>A name nothing is bound to is an error rather than a silent success: the two look identical
+     * afterwards, and the one you wanted to hear about is the typo.
+     */
+    record Unstore(String name) implements Op {
+        public Unstore {
+            requireName(name);
+        }
+    }
+
     /** Push a stored value, or the bare symbol when nothing is bound to that name. */
     record Recall(String name) implements Op {
         public Recall {
             requireName(name);
         }
     }
+
+    /**
+     * Replace a list on top of the stack with its elements. Calc's {@code v u}.
+     *
+     * <p>The other half — packing — needs no operation of its own: it is exactly {@link Apply} with
+     * the list head, which already pops the right number of values, builds the call and carries the
+     * provenance. Unpacking has no such spelling, because nothing else in the vocabulary turns one
+     * value into many.
+     */
+    record Unpack() implements Op {}
 
     /** Replace the top value with the result of evaluating it again — Calc's {@code =}. */
     record Evaluate() implements Op {}

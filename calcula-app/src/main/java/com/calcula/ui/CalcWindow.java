@@ -323,6 +323,15 @@ public final class CalcWindow {
      */
     private Modes shownModes = Modes.DEFAULTS;
 
+    /**
+     * The bindings as of the last published state.
+     *
+     * <p>Held here rather than read from the machine, for the same reason the modes are: the machine
+     * belongs to the worker thread, and a sheet drawn on the FX thread must read what was published
+     * rather than reach across for whatever is current mid-operation.
+     */
+    private Map<String, Expr> shownVariables = Map.of();
+
     private SheetTabs tabs;
 
     /** Told when the file or the modified flag changes, so the stage can retitle. */
@@ -334,6 +343,7 @@ public final class CalcWindow {
     private final SettingsDialog settingsDialog;
     private final CommandMenuBar menuBar;
     private final FunctionSheet functionSheet;
+    private final VariableSheet variableSheet;
 
     private final ExampleSheet exampleSheet;
     private final InputCompletion completion = new InputCompletion(input);
@@ -407,11 +417,12 @@ public final class CalcWindow {
         settingsDialog = new SettingsDialog(overlays, () -> settings, this::applySettings);
         // Picking a row puts the signature on the input line, so a reference is something to work
         // from rather than something to retype from.
-        functionSheet = new FunctionSheet(overlays, signature -> {
-            input.setText(signature);
-            input.requestFocus();
-            input.positionCaret(signature.length());
-        });
+        functionSheet = new FunctionSheet(overlays, this::putOnInputLine);
+
+        // The name rather than the value: the name is what every next gesture takes, and the value is
+        // already on the row being looked at.
+        variableSheet = new VariableSheet(
+                overlays, () -> shownVariables, this::mathStyle, this::putOnInputLine, this::unbindVariable);
 
         exampleSheet = new ExampleSheet(overlays, this::useExample, this::chordFor);
 
@@ -452,7 +463,7 @@ public final class CalcWindow {
         input.addEventFilter(KeyEvent.KEY_PRESSED, this::onKey);
         // The other half of consuming a chord — see swallowTyped.
         input.addEventFilter(KeyEvent.KEY_TYPED, this::onTyped);
-        // Offer completions as the name is typed. Cheap: a prefix scan of a curated table of eighty.
+        // Offer completions as the name is typed. Cheap: a prefix scan of a curated table.
         //
         // DEFERRED by one pulse, and it has to be: a text-property listener fires while the caret is
         // still where it was, so computing the word before the caret here reads one character behind
@@ -622,6 +633,12 @@ public final class CalcWindow {
                 "Recall variable",
                 "Push what the name on the input line is bound to",
                 this::recallVariable);
+        registry.register("var.list", "Variables…", "Everything bound, and to what", variableSheet::show);
+        registry.register(
+                "var.clear",
+                "Unbind variable",
+                "Forget what the name on the input line is bound to",
+                this::unbindFromInputLine);
         registry.register(
                 "edit.undo",
                 "Undo",
@@ -1189,6 +1206,37 @@ public final class CalcWindow {
         });
     }
 
+    /** Unbind whatever the input line names. */
+    private void unbindFromInputLine() {
+        String name = variableNameOnInputLine();
+        if (name == null) {
+            return;
+        }
+        input.clear();
+        unbindVariable(name);
+    }
+
+    /**
+     * Forget one binding, from the input line or from a row of the sheet.
+     *
+     * <p>Shared, so the two cannot drift into removing things differently — and the sheet redraws
+     * from the state that comes back rather than from the click, since the removal lands a pulse
+     * later and might have failed.
+     */
+    private void unbindVariable(String name) {
+        onMachine(m -> {
+            m.apply(new Op.Unstore(name));
+            m.record(new TrailEntry(TrailEntry.Kind.NOTE, name + " is no longer bound"));
+        });
+    }
+
+    /** Put text on the input line and leave the caret after it, ready to be worked from. */
+    private void putOnInputLine(String text) {
+        input.setText(text);
+        input.requestFocus();
+        input.positionCaret(text.length());
+    }
+
     /**
      * The variable name on the input line, or null after reporting why there is not one.
      *
@@ -1264,6 +1312,9 @@ public final class CalcWindow {
         keymap.bind("M-s t", "var.store");
         keymap.bind("M-s s", "var.storeKeep");
         keymap.bind("M-s r", "var.recall");
+        keymap.bind("M-s l", "var.list");
+        // Calc's s u, unstore.
+        keymap.bind("M-s u", "var.clear");
         // M-x for the palette, as in Emacs. Both spellings of the settings chord, since Chords emits
         // Cmd- on macOS and C- everywhere else, and , is where every platform puts preferences.
         // Zoom, on the chords every application uses. Bound for the STACK: it is the surface being
@@ -1699,7 +1750,9 @@ public final class CalcWindow {
 
     private void publish(CalcState snapshot, List<TrailEntry> trail) {
         shownModes = snapshot.modes();
+        shownVariables = snapshot.variables();
         stack.setAll(snapshot.entries());
+        variableSheet.refresh();
         trailLines.setAll(trail);
         if (!trailLines.isEmpty()) {
             trailView.scrollTo(trailLines.size() - 1);

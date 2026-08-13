@@ -62,7 +62,13 @@ public record CalcState(List<Entry> entries, Map<String, Expr> variables, Modes 
 
     public CalcState {
         entries = List.copyOf(entries);
-        variables = Map.copyOf(variables);
+        // Insertion-ordered, NOT Map.copyOf, whose iteration order is deliberately unspecified. Sheet
+        // already says this about the file; the state it is built from has to keep the same promise or
+        // the promise is only true for a sheet nobody worked in. Binding n and then third and saving
+        // wrote them in whichever order the copy happened to hash into, so a sheet reshuffled itself on
+        // a save that changed nothing — which SheetFormatTest could not see, because it builds a Sheet
+        // directly and never goes through a machine.
+        variables = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(variables));
     }
 
     /** A state holding these values, with nothing known about where they came from. */
@@ -126,6 +132,21 @@ public record CalcState(List<Entry> entries, Map<String, Expr> variables, Modes 
     public CalcState withVariable(String name, Expr value) {
         Map<String, Expr> updated = new LinkedHashMap<>(variables);
         updated.put(name, value);
+        return new CalcState(entries, updated, modes);
+    }
+
+    /**
+     * Without this binding.
+     *
+     * <p>Returns {@code this} when the name was not bound, so an unstore that changes nothing pushes
+     * no undo step — the same rule {@link Machine} applies to setting the modes it already has.
+     */
+    public CalcState withoutVariable(String name) {
+        if (!variables.containsKey(name)) {
+            return this;
+        }
+        Map<String, Expr> updated = new LinkedHashMap<>(variables);
+        updated.remove(name);
         return new CalcState(entries, updated, modes);
     }
 
