@@ -199,7 +199,14 @@ public final class Machine {
                 // What it was before is what it came from, which is the honest answer for a value
                 // that has just been worked out further.
                 Expr was = next.get(next.size() - 1).value();
-                next.set(next.size() - 1, CalcState.Entry.from(evaluate(was, from.modes()), was));
+                // Stored variables resolve HERE and nowhere else, which is Calc's division and not an
+                // accident of where the map was reachable. A symbol has to stay a symbol for the
+                // algebra to work at all — deriv(x^2, x) is meaningless the moment storing 3 in x
+                // rewrites it — so binding a name must not change what an expression already on the
+                // stack means. `=` is the place the user asks for exactly that, so it is the place
+                // that does it.
+                Expr resolved = Exprs.substitute(was, from.variables());
+                next.set(next.size() - 1, CalcState.Entry.from(evaluate(resolved, from.modes()), was));
                 yield from.withEntries(next);
             }
         };

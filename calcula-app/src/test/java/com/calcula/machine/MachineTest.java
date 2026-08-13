@@ -244,6 +244,50 @@ class MachineTest {
         assertEquals(List.of("y"), display(m));
     }
 
+    @Test
+    void evaluateResolvesStoredVariables() {
+        Machine m = machine();
+        m.applyAll(List.of(push("42"), new Op.Store("n")));
+        m.apply(push("n + 1"));
+        assertEquals(List.of("n + 1"), display(m), "a name stays a name until = is asked for");
+
+        m.apply(new Op.Evaluate());
+        assertEquals(List.of("43"), display(m));
+    }
+
+    @Test
+    void storingDoesNotRewriteWhatIsAlreadyOnTheStack() {
+        // The reason substitution lives at Evaluate and nowhere else. If binding a name changed the
+        // meaning of expressions already worked out, no symbolic session could survive storing a
+        // value in x — which is a variable name long before it is a place to keep a number.
+        Machine m = machine();
+        m.apply(push("x + 1"));
+        m.applyAll(List.of(push("3"), new Op.Store("x")));
+        assertEquals(List.of("x + 1"), display(m));
+    }
+
+    @Test
+    void evaluateLeavesTheOriginAsWhatWasThereBefore() {
+        Machine m = machine();
+        m.applyAll(List.of(push("2"), new Op.Store("n")));
+        m.apply(push("n + 1"));
+        m.apply(new Op.Evaluate());
+        // Not the substituted form: what this was worked out FROM is the expression the user had.
+        assertEquals("n + 1", Formatter.format(m.state().entryAt(1).origin()));
+    }
+
+    @Test
+    void undoTakesBackABinding() {
+        // Modes already undo; a binding is the other thing that changes an answer without appearing
+        // in the stack, so it has to come back too.
+        Machine m = machine();
+        m.apply(push("42"));
+        m.apply(new Op.Store("n"));
+        assertTrue(m.undo());
+        assertFalse(m.state().variables().containsKey("n"));
+        assertEquals(List.of("42"), display(m), "and the value it took is back where it was");
+    }
+
     // ---- trail -----------------------------------------------------------------------------
 
     @Test
