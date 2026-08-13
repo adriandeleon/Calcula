@@ -81,6 +81,20 @@ class FloatDisplayFxTest {
     }
 
     @Test
+    void aWholeNumberIsShownInTheBaseTheModesAskFor() throws Exception {
+        Region root = FxTestSupport.callOnFx(
+                () -> MathLayout.render(Parser.parse("255"), MathStyle.of(20, FloatFormat.NORMAL, 16)));
+        FxTestSupport.realize(root);
+        List<Node> all = new ArrayList<>();
+        collect(root, all);
+        StringBuilder out = new StringBuilder();
+        all.stream().filter(Text.class::isInstance).map(Text.class::cast).forEach(t -> out.append(t.getText()));
+        // Written the way it can be typed back in, which is the point of choosing Calc's spelling
+        // rather than a bare ff nobody could re-enter.
+        assertEquals("16#ff", out.toString());
+    }
+
+    @Test
     void groupingStillApplies() throws Exception {
         // Both are display, and they compose: fixed shortens the fraction, grouping spaces the integer.
         assertEquals(

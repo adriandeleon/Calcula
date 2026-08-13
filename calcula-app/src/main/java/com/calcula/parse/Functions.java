@@ -210,6 +210,20 @@ public final class Functions {
 
         // Sign convention, and it is the only part anybody argues about: money received is positive
         // and money paid is negative, as in every spreadsheet.
+        // Every one of these depends on the word size, which is a mode: M-m w. Without a width, "not"
+        // has no answer.
+        group(
+                "Bits",
+                doc("BitAnd", "BitAnd(a, b)", "Bits set in both"),
+                doc("BitOr", "BitOr(a, b)", "Bits set in either"),
+                doc("BitXor", "BitXor(a, b)", "Bits set in one but not both"),
+                doc("BitNot", "BitNot(a)", "The bits that were not set, within the word"),
+                doc("ShiftLeft", "ShiftLeft(a, places)", "Shift up, dropping what falls off the top"),
+                doc("ShiftRight", "ShiftRight(a, places)", "Shift down, filling with zeros"),
+                doc("RotateLeft", "RotateLeft(a, places)", "Shift up, wrapping round"),
+                doc("RotateRight", "RotateRight(a, places)", "Shift down, wrapping round"),
+                doc("BitLength", "BitLength(n)", "How many bits n needs"));
+
         group(
                 "Money",
                 doc("pv", "pv(rate, periods, payment, future)", "What a payment stream is worth now"),

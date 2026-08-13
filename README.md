@@ -370,6 +370,23 @@ the map was reachable. Binding something to `x` must not change what `deriv(x^2,
 never rewrites the stack; `C-x e` is where you ask for the substitution, and it is one pass, so a
 binding that mentions itself terminates instead of recursing.
 
+### Words and bases
+
+`M-m w` sets the word size and `M-m b` the base; `M-m d`… no, `mode.decimal` on the palette puts the
+base back to ten. Both appear in the mode line only when they are not what everybody assumes, because
+a mode line that always states the base is one nobody reads.
+
+The word size is a mode rather than an argument because every bitwise operation is meaningless
+without one: `BitNot(12)` is 3 in four bits, 243 in eight and 4294967283 in thirty-two, and there is
+no answer that is right independently of the width. Values go in as two's complement and come out
+unsigned, which is the half people disagree about, so it is stated rather than assumed.
+
+A number can be *typed* in a base as `16#ff`, and that is entirely separate from being *shown* in one.
+Entry produces an ordinary integer, so the formatter — which is how a sheet is saved — never sees the
+spelling; display happens in the layout, beside the float format and the digit grouping, for the same
+reason. Grouping stays a base-ten convention: threes applied to hexadecimal would make it harder to
+read, not easier.
+
 ### Rewrite rules
 
 `M-r` applies the rule on the input line — to the **selected part** when there is one, and to the top

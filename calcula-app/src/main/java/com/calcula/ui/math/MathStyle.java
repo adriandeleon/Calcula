@@ -20,7 +20,7 @@ import com.calcula.machine.FloatFormat;
  * @param floats how an inexact number is written out, which is a mode rather than a font decision --
  *     it rides here because this record is what every part of a formula already carries
  */
-public record MathStyle(String family, double baseSize, int level, FloatFormat floats) {
+public record MathStyle(String family, double baseSize, int level, FloatFormat floats, int radix) {
 
     /** TeX's own ratios: 100%, then 70%, then 50%, and no further. */
     private static final double[] SCALE = {1.0, 0.7, 0.5};
@@ -42,7 +42,11 @@ public record MathStyle(String family, double baseSize, int level, FloatFormat f
     }
 
     public static MathStyle of(double baseSize, FloatFormat floats) {
-        return new MathStyle(DEFAULT_FAMILY, baseSize, 0, floats);
+        return of(baseSize, floats, com.calcula.machine.Modes.DECIMAL);
+    }
+
+    public static MathStyle of(double baseSize, FloatFormat floats, int radix) {
+        return new MathStyle(DEFAULT_FAMILY, baseSize, 0, floats, radix);
     }
 
     public MathStyle {
@@ -51,6 +55,9 @@ public record MathStyle(String family, double baseSize, int level, FloatFormat f
         }
         if (floats == null) {
             floats = FloatFormat.NORMAL;
+        }
+        if (radix < com.calcula.machine.Modes.MIN_RADIX || radix > com.calcula.machine.Modes.MAX_RADIX) {
+            radix = com.calcula.machine.Modes.DECIMAL;
         }
     }
 
@@ -72,7 +79,7 @@ public record MathStyle(String family, double baseSize, int level, FloatFormat f
 
     /** One level smaller, stopping at scriptscript. */
     public MathStyle script() {
-        return level >= MAX_LEVEL ? this : new MathStyle(family, baseSize, level + 1, floats);
+        return level >= MAX_LEVEL ? this : new MathStyle(family, baseSize, level + 1, floats, radix);
     }
 
     /** True in script or scriptscript, where TeX suppresses binary and relational spacing. */

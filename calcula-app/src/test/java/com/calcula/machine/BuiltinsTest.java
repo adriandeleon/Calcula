@@ -67,6 +67,6 @@ class BuiltinsTest {
     void aHeadNobodyHereKnowsIsUntouched() {
         // The property that keeps this a layer rather than a fork: Builtins answers null and the
         // expression carries on to the engine exactly as it always did.
-        assertEquals(null, Builtins.apply("Integrate", List.of(), Modes.DEFAULTS.mathContext()));
+        assertEquals(null, Builtins.apply("Integrate", List.of(), Modes.DEFAULTS));
     }
 }
