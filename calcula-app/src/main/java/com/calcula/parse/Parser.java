@@ -79,8 +79,24 @@ public final class Parser {
         return left;
     }
 
-    private Expr relational() {
+    /**
+     * {@code 2 +/- 0.1} — a measurement and how far out it might be.
+     *
+     * <p>Its own level, looser than {@code +} so {@code 2 + 3 +/- 0.1} is a measurement of five, and
+     * tighter than a comparison so an error form can be compared with something. Non-associative:
+     * {@code a +/- b +/- c} is not a thing anybody means.
+     */
+    private Expr errorForm() {
         Expr left = additive();
+        if (peek().kind() == Kind.OP && peek().text().equals("+/-")) {
+            next();
+            return Exprs.call("PlusMinus", left, additive());
+        }
+        return left;
+    }
+
+    private Expr relational() {
+        Expr left = errorForm();
         Token t = peek();
         if (t.kind() == Kind.OP) {
             String head =
@@ -97,7 +113,7 @@ public final class Parser {
                 next();
                 // Non-associative on purpose: `a < b < c` means different things in different
                 // languages, so it is refused rather than silently picking one.
-                return Exprs.call(head, left, additive());
+                return Exprs.call(head, left, errorForm());
             }
         }
         return left;

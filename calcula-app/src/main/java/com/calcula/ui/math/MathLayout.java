@@ -76,6 +76,9 @@ public final class MathLayout {
     /** U+2212, the real minus sign — not a hyphen, which is shorter and sits at the wrong height. */
     private static final String MINUS = "−";
 
+    /** U+00B1. Typed as +/-, and there is no key for it. */
+    private static final String PLUS_MINUS = "±";
+
     private MathLayout() {}
 
     /**
@@ -254,6 +257,16 @@ public final class MathLayout {
             case "Minus" ->
                 c.arity() == 1
                         ? row(style, op(MINUS, style, Atom.BIN), item(c.arg(0), style, at(path, 0)))
+                        : function(c, style, path);
+            // Typed +/- and set as one glyph: what a keyboard has and what mathematics looks like
+            // are different things, and the formatter keeps the first while this shows the second.
+            case "PlusMinus" ->
+                c.arity() == 2
+                        ? row(
+                                style,
+                                item(c.arg(0), style, at(path, 0)),
+                                op(PLUS_MINUS, style, Atom.BIN),
+                                item(c.arg(1), style, at(path, 1)))
                         : function(c, style, path);
             case "Power" -> power(c, style, path);
             case "Sqrt" ->
