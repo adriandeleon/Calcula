@@ -29,13 +29,18 @@ public record Settings(
         double trailSize,
         double trailSplit,
         boolean trailShown,
-        boolean showApproximations) {
+        boolean showApproximations,
+        double windowX,
+        double windowY,
+        double windowWidth,
+        double windowHeight,
+        boolean windowMaximized) {
 
     /**
      * Bumped whenever the shape changes, so an older build never silently reinterprets a newer file.
      * A file claiming a higher version is set aside rather than parsed — see {@link SettingsStore}.
      */
-    public static final int SCHEMA_VERSION = 4;
+    public static final int SCHEMA_VERSION = 5;
 
     public static final String ALGEBRAIC = "algebraic";
     public static final String RPN = "rpn";
@@ -67,8 +72,20 @@ public record Settings(
      * preference rather than a hardcoded choice, which is the honest resolution: the two readers are
      * equally supported, and which one someone wants is not something the program can know.
      */
-    public static final Settings DEFAULTS =
-            new Settings("slab", ALGEBRAIC, Modes.DEFAULTS, 17, 11, DEFAULT_TRAIL_SPLIT, true, true);
+    public static final Settings DEFAULTS = new Settings(
+            "slab",
+            ALGEBRAIC,
+            Modes.DEFAULTS,
+            17,
+            11,
+            DEFAULT_TRAIL_SPLIT,
+            true,
+            true,
+            Double.NaN,
+            Double.NaN,
+            980,
+            660,
+            false);
 
     public Settings {
         themeId = themeId == null || themeId.isBlank() ? DEFAULTS_THEME : themeId.trim();
@@ -79,6 +96,12 @@ public record Settings(
         mathSize = Math.clamp(mathSize, MIN_MATH_SIZE, MAX_MATH_SIZE);
         trailSize = Math.clamp(trailSize, MIN_TRAIL_SIZE, MAX_TRAIL_SIZE);
         trailSplit = Math.clamp(trailSplit, MIN_TRAIL_SPLIT, MAX_TRAIL_SPLIT);
+        // Size is clamped; POSITION is not. A monitor arranged to the left has legitimately negative
+        // coordinates, and NaN is the sentinel for "nothing saved" — clamping either would turn a
+        // real position into a wrong one. Whether a position is still reachable is a different
+        // question, asked against the screens that actually exist; see WindowBounds.
+        windowWidth = Math.max(com.calcula.ui.WindowBounds.MIN_WIDTH, windowWidth);
+        windowHeight = Math.max(com.calcula.ui.WindowBounds.MIN_HEIGHT, windowHeight);
     }
 
     private static final String DEFAULTS_THEME = "slab";
@@ -88,20 +111,71 @@ public record Settings(
     }
 
     public Settings withTheme(String id) {
-        return new Settings(id, inputModel, modes, mathSize, trailSize, trailSplit, trailShown, showApproximations);
+        return new Settings(
+                id,
+                inputModel,
+                modes,
+                mathSize,
+                trailSize,
+                trailSplit,
+                trailShown,
+                showApproximations,
+                windowX,
+                windowY,
+                windowWidth,
+                windowHeight,
+                windowMaximized);
     }
 
     public Settings withInputModel(String model) {
-        return new Settings(themeId, model, modes, mathSize, trailSize, trailSplit, trailShown, showApproximations);
+        return new Settings(
+                themeId,
+                model,
+                modes,
+                mathSize,
+                trailSize,
+                trailSplit,
+                trailShown,
+                showApproximations,
+                windowX,
+                windowY,
+                windowWidth,
+                windowHeight,
+                windowMaximized);
     }
 
     public Settings withModes(Modes newModes) {
         return new Settings(
-                themeId, inputModel, newModes, mathSize, trailSize, trailSplit, trailShown, showApproximations);
+                themeId,
+                inputModel,
+                newModes,
+                mathSize,
+                trailSize,
+                trailSplit,
+                trailShown,
+                showApproximations,
+                windowX,
+                windowY,
+                windowWidth,
+                windowHeight,
+                windowMaximized);
     }
 
     public Settings withMathSize(double size) {
-        return new Settings(themeId, inputModel, modes, size, trailSize, trailSplit, trailShown, showApproximations);
+        return new Settings(
+                themeId,
+                inputModel,
+                modes,
+                size,
+                trailSize,
+                trailSplit,
+                trailShown,
+                showApproximations,
+                windowX,
+                windowY,
+                windowWidth,
+                windowHeight,
+                windowMaximized);
     }
 
     /**
@@ -112,11 +186,37 @@ public record Settings(
      * happens every session.
      */
     public Settings withTrailSplit(double fraction) {
-        return new Settings(themeId, inputModel, modes, mathSize, trailSize, fraction, trailShown, showApproximations);
+        return new Settings(
+                themeId,
+                inputModel,
+                modes,
+                mathSize,
+                trailSize,
+                fraction,
+                trailShown,
+                showApproximations,
+                windowX,
+                windowY,
+                windowWidth,
+                windowHeight,
+                windowMaximized);
     }
 
     public Settings withTrailShown(boolean shown) {
-        return new Settings(themeId, inputModel, modes, mathSize, trailSize, trailSplit, shown, showApproximations);
+        return new Settings(
+                themeId,
+                inputModel,
+                modes,
+                mathSize,
+                trailSize,
+                trailSplit,
+                shown,
+                showApproximations,
+                windowX,
+                windowY,
+                windowWidth,
+                windowHeight,
+                windowMaximized);
     }
 
     /**
@@ -126,10 +226,54 @@ public record Settings(
      * question it answers, "yes, but how big is it", is the one a calculator is usually being asked.
      */
     public Settings withApproximations(boolean shown) {
-        return new Settings(themeId, inputModel, modes, mathSize, trailSize, trailSplit, trailShown, shown);
+        return new Settings(
+                themeId,
+                inputModel,
+                modes,
+                mathSize,
+                trailSize,
+                trailSplit,
+                trailShown,
+                shown,
+                windowX,
+                windowY,
+                windowWidth,
+                windowHeight,
+                windowMaximized);
+    }
+
+    /** Where the window was, and how big. Position is NaN until something is saved. */
+    public Settings withWindow(double x, double y, double width, double height, boolean maximized) {
+        return new Settings(
+                themeId,
+                inputModel,
+                modes,
+                mathSize,
+                trailSize,
+                trailSplit,
+                trailShown,
+                showApproximations,
+                x,
+                y,
+                width,
+                height,
+                maximized);
     }
 
     public Settings withTrailSize(double size) {
-        return new Settings(themeId, inputModel, modes, mathSize, size, trailSplit, trailShown, showApproximations);
+        return new Settings(
+                themeId,
+                inputModel,
+                modes,
+                mathSize,
+                size,
+                trailSplit,
+                trailShown,
+                showApproximations,
+                windowX,
+                windowY,
+                windowWidth,
+                windowHeight,
+                windowMaximized);
     }
 }

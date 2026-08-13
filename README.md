@@ -395,9 +395,20 @@ because closing something should not forget the size it had. A closed trail leav
 entirely rather than being driven to a zero-width divider — a divider at zero is still there to be
 grabbed, and a column of pure border is a worse answer than no column.
 
-Schema 3, and the migration is that there is nothing to migrate: an added scalar reads as its
-default, so a file from the previous build opens the trail at its usual width. A test writes a
-schema-2 file by hand and says so.
+The window's own size and position are kept too — but the position is only restored when enough of
+the window would land on a screen that currently exists. A position saved on a monitor since
+unplugged, or on a laptop since undocked, otherwise opens the calculator somewhere it cannot be
+dragged back from, and the failure is total because there is nothing on screen to grab. The screens
+are passed to the check rather than read inside it, so a display arranged to the left with negative
+coordinates and a display that has gone away are both ordinary test cases.
+
+While maximised the stage reports the screen rather than a choice anyone made, so only the
+un-maximised geometry is written down and the flag is kept beside it — otherwise un-maximising
+returns to a full-screen "window" forever after.
+
+The migration is that there is nothing to migrate: an added scalar reads as its default, so a file
+from an earlier build opens the trail at its usual width and the window centred. A test writes an
+older file by hand and says so.
 
 ### How big is it
 

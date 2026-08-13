@@ -81,7 +81,12 @@ public final class SettingsStore {
                 readDouble(props, "trailSize", d.trailSize()),
                 readDouble(props, "trailSplit", d.trailSplit()),
                 readBool(props, "trailShown", d.trailShown()),
-                readBool(props, "showApproximations", d.showApproximations()));
+                readBool(props, "showApproximations", d.showApproximations()),
+                readDouble(props, "windowX", d.windowX()),
+                readDouble(props, "windowY", d.windowY()),
+                readDouble(props, "windowWidth", d.windowWidth()),
+                readDouble(props, "windowHeight", d.windowHeight()),
+                readBool(props, "windowMaximized", d.windowMaximized()));
     }
 
     /**
@@ -104,6 +109,11 @@ public final class SettingsStore {
         props.setProperty("trailSplit", Double.toString(settings.trailSplit()));
         props.setProperty("trailShown", Boolean.toString(settings.trailShown()));
         props.setProperty("showApproximations", Boolean.toString(settings.showApproximations()));
+        props.setProperty("windowX", Double.toString(settings.windowX()));
+        props.setProperty("windowY", Double.toString(settings.windowY()));
+        props.setProperty("windowWidth", Double.toString(settings.windowWidth()));
+        props.setProperty("windowHeight", Double.toString(settings.windowHeight()));
+        props.setProperty("windowMaximized", Boolean.toString(settings.windowMaximized()));
         try {
             Files.createDirectories(file.getParent());
             Path temp = file.resolveSibling(FILE_NAME + ".tmp");
