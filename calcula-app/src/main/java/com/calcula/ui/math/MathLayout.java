@@ -79,6 +79,9 @@ public final class MathLayout {
     /** U+00B1. Typed as +/-, and there is no key for it. */
     private static final String PLUS_MINUS = "±";
 
+    /** Two dots, set with the spacing of a binary operator. */
+    private static final String RANGE = "..";
+
     private MathLayout() {}
 
     /**
@@ -236,6 +239,11 @@ public final class MathLayout {
         return node;
     }
 
+    /** The {@code {a, b}} inside an interval, or null when this is not one we can draw. */
+    private static Call intervalBounds(Call c) {
+        return c.arity() == 1 && c.arg(0) instanceof Call pair && Exprs.isList(pair) && pair.arity() == 2 ? pair : null;
+    }
+
     private static Node call(Call c, MathStyle style, List<Integer> path) {
         return switch (c.head()) {
             case "Plus" -> c.arity() >= 2 ? sum(c, style, path) : function(c, style, path);
@@ -260,6 +268,19 @@ public final class MathLayout {
                         : function(c, style, path);
             // Typed +/- and set as one glyph: what a keyboard has and what mathematics looks like
             // are different things, and the formatter keeps the first while this shows the second.
+            // Bracketed here and not in the formatter: [1 .. 2] is how an interval is written, and
+            // `1 .. 2` is how it is typed. Same split as +/- against ±.
+            case "Interval" ->
+                intervalBounds(c) != null
+                        ? new FenceNode(
+                                row(
+                                        style,
+                                        item(intervalBounds(c).arg(0), style, null),
+                                        op(RANGE, style, Atom.BIN),
+                                        item(intervalBounds(c).arg(1), style, null)),
+                                style,
+                                FenceNode.Kind.BRACKET)
+                        : function(c, style, path);
             case "PlusMinus" ->
                 c.arity() == 2
                         ? row(

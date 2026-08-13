@@ -217,6 +217,13 @@ public final class Functions {
         // it is clicked, so a row that is not callable hands the user something that fails. The
         // spelling lives in the summary, which is where somebody looking for it will read it.
         group(
+                "Ranges",
+                doc(
+                        "Interval",
+                        "Interval([a, b])",
+                        "A range of values — usually typed a .. b, and arithmetic carries the bounds"));
+
+        group(
                 "Measurements",
                 doc(
                         "PlusMinus",

@@ -125,9 +125,10 @@ class CatalogueTest {
         answers("Rationalize(0.75)", "3/4");
         answers("IntegerPart(2.7)", "2");
         // An interval carries its bounds through arithmetic, which is most of what makes it worth
-        // listing at all.
-        answers("Interval([1, 2])", "Interval([1, 2])");
-        assertEquals("Interval([2, 3])", eval("Interval([1, 2]) + 1"));
+        // listing at all. It reads back as `1 .. 2` now that ranges have a notation — the call form
+        // is still what it IS, and still what the engine is handed.
+        answers("Interval([1, 2])", "1 .. 2");
+        assertEquals("2 .. 3", eval("Interval([1, 2]) + 1"));
     }
 
     @Test

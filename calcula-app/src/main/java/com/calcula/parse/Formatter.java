@@ -110,6 +110,16 @@ public final class Formatter {
                             weakSide);
                 }
             }
+            case "Interval" -> {
+                Expr bounds = c.arity() == 1 ? c.arg(0) : null;
+                if (bounds instanceof Call pair && Exprs.isList(pair) && pair.arity() == 2) {
+                    return bracket(
+                            write(pair.arg(0), PREC_ERROR, false) + " .. " + write(pair.arg(1), PREC_ERROR, true),
+                            PREC_ERROR,
+                            parentPrec,
+                            weakSide);
+                }
+            }
             case "PlusMinus" -> {
                 if (c.arity() == 2) {
                     // Its own precedence, between a comparison and a sum, matching where it parses.
@@ -239,7 +249,7 @@ public final class Formatter {
         return switch (head) {
             case "Rule" -> PREC_RULE;
             case "Equal", "Less", "Greater", "LessEqual", "GreaterEqual", "Unequal" -> PREC_RELATION;
-            case "PlusMinus" -> PREC_ERROR;
+            case "PlusMinus", "Interval" -> PREC_ERROR;
             case "Plus", "Subtract" -> PREC_ADDITIVE;
             case "Times", "Divide" -> PREC_MULTIPLICATIVE;
             case "Minus" -> PREC_UNARY;

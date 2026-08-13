@@ -92,6 +92,14 @@ public final class Parser {
             next();
             return Exprs.call("PlusMinus", left, additive());
         }
+        if (peek().kind() == Kind.OP && peek().text().equals("..")) {
+            next();
+            // The ENGINE'S own shape, Interval({a, b}), and not a two-argument call: Interval(1, 2)
+            // means two degenerate intervals to Symja, which would have been silently wrong rather
+            // than an error. Building what it already understands is what makes its arithmetic --
+            // including sin over a range, which no reimplementation here would match -- work for free.
+            return Exprs.call("Interval", Exprs.list(left, additive()));
+        }
         return left;
     }
 

@@ -82,7 +82,9 @@ final class Lexer {
             }
             i = save; // a # with nothing usable after it is not ours
         }
-        if (i < src.length() && src.charAt(i) == '.') {
+        // Not a decimal point when another dot follows: 1..2 is a range, and reading it as `1.`
+        // then `.2` would silently make two numbers out of one interval.
+        if (i < src.length() && src.charAt(i) == '.' && !(i + 1 < src.length() && src.charAt(i + 1) == '.')) {
             i++;
             while (i < src.length() && Character.isDigit(src.charAt(i))) {
                 i++;
@@ -143,6 +145,10 @@ final class Lexer {
             default -> {
                 // Three characters before two, for the same reason two come before one: +/- would
                 // otherwise lex as a plus and then a division by nothing.
+                if (src.startsWith("..", i)) {
+                    i += 2;
+                    return new Token(Kind.OP, "..", start);
+                }
                 if (i + 2 < src.length() && src.startsWith("+/-", i)) {
                     i += 3;
                     return new Token(Kind.OP, "+/-", start);
