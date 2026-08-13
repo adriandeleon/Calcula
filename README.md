@@ -410,6 +410,22 @@ The migration is that there is nothing to migrate: an added scalar reads as its 
 from an earlier build opens the trail at its usual width and the window centred. A test writes an
 older file by hand and says so.
 
+### Where a value came from
+
+A stack entry is a value and the expression it was worked out from. `1/3 + 1/6` leaves `1/2` whose
+origin is the sum; `FactorInteger(2^64 - 1)` leaves a list of seven pairs that would otherwise be
+indistinguishable from a matrix somebody typed. The row says so in its tooltip and to a screen
+reader, and says nothing when the origin is the value itself — which is most rows.
+
+The value and its origin are **one entry in one list**, which is the whole reason this is not a
+source of bugs: every machine operation is list surgery, and surgery on pairs carries the origin
+without any code that knows about it. It lives in `CalcState`, so undo restores it along with
+everything else.
+
+Session-only, deliberately. The `.calc` file saves the mathematics; a value's history is not part of
+the mathematics, and adding it would mean a second thing on every `stack` line in a format that rests
+on `Formatter` and `Parser` being inverses.
+
 ### How big is it
 
 An exact answer is the right answer and not always the useful one. Every stack row whose value has a

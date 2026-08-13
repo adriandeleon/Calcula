@@ -44,9 +44,20 @@ public record Sheet(List<Expr> stack, Map<String, Expr> variables, Modes modes, 
         }
     }
 
-    /** The state a machine should be restored to. */
+    /**
+     * The state a machine should be restored to.
+     *
+     * <p>The values come back; where they came from does not. Provenance is session-only — the
+     * {@code .calc} format saves the mathematics, and a value's history is not part of the
+     * mathematics. A loaded sheet therefore answers "where did this come from" with silence, which is
+     * the truthful answer: it came from a file.
+     *
+     * <p>The alternative would be a second thing on every {@code stack} line, and the format rests on
+     * Formatter and Parser being inverses — a line the parser cannot read back is data loss at SAVE
+     * time, where the file looks healthy and the value returns wrong.
+     */
     public CalcState state() {
-        return new CalcState(stack, variables, modes);
+        return CalcState.ofValues(stack, variables, modes);
     }
 
     public static Sheet of(CalcState state, List<TrailEntry> trail) {

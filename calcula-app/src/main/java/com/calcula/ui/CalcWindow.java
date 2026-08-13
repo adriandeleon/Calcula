@@ -159,9 +159,16 @@ public final class CalcWindow {
     private final StackPane sceneRoot = new StackPane();
 
     private final BorderPane root = new BorderPane();
-    private final ObservableList<Expr> stack = FXCollections.observableArrayList();
+    /**
+     * The stack as the window shows it: values AND where each came from.
+     *
+     * <p>Entries rather than bare values, so a row can answer "where did this come from" without a
+     * second list to keep in step with this one.
+     */
+    private final ObservableList<CalcState.Entry> stack = FXCollections.observableArrayList();
+
     private final ObservableList<TrailEntry> trailLines = FXCollections.observableArrayList();
-    private final ListView<Expr> stackView = new ListView<>(stack);
+    private final ListView<CalcState.Entry> stackView = new ListView<>(stack);
     private final ListView<TrailEntry> trailView = new ListView<>(trailLines);
     private final Label modes = new Label();
     private final Label engineStatus = new Label("CAS: loading…");
@@ -927,7 +934,8 @@ public final class CalcWindow {
             return;
         }
         try {
-            javafx.scene.image.Image page = SheetRenderer.render(List.copyOf(stack), mathSize);
+            javafx.scene.image.Image page = SheetRenderer.render(
+                    stack.stream().map(CalcState.Entry::value).toList(), mathSize);
             com.calcula.pdf.PdfWriter.writeImage(target.toPath(), page, SheetRenderer.SCALE);
             flash("exported " + target.getName());
         } catch (Exception e) {
@@ -1504,7 +1512,7 @@ public final class CalcWindow {
 
     private void publish(CalcState snapshot, List<TrailEntry> trail) {
         shownModes = snapshot.modes();
-        stack.setAll(snapshot.stack());
+        stack.setAll(snapshot.entries());
         trailLines.setAll(trail);
         if (!trailLines.isEmpty()) {
             trailView.scrollTo(trailLines.size() - 1);
@@ -1599,13 +1607,14 @@ public final class CalcWindow {
         stackView.setPlaceholder(emptyStackHint());
         stackView.setCellFactory(v -> new ListCell<>() {
             @Override
-            protected void updateItem(Expr value, boolean empty) {
-                super.updateItem(value, empty);
-                if (empty || value == null) {
+            protected void updateItem(CalcState.Entry entry, boolean empty) {
+                super.updateItem(entry, empty);
+                if (empty || entry == null) {
                     setGraphic(null);
                     setText(null);
                     return;
                 }
+                Expr value = entry.value();
                 // A CAS spends its life moving between exact and approximate. Modes reports the
                 // POLICY (symbolic, fractions); nothing reported the VALUE. See RowMarker for what
                 // the rail means, why it is one colour and not two, and why only Hold is caught.
@@ -1689,12 +1698,17 @@ public final class CalcWindow {
                 // value" and cannot say WHAT is a puzzle rather than a signal — and the held case is
                 // the one where the answer is genuinely useful, because it names a thing the user
                 // can go and look up.
+                // What the marker means, and where the value came from. Both are things the row
+                // knows and could not say; neither earns permanent space, because most rows have
+                // nothing to add and a column of "from: 42" beside 42 would be noise.
                 String why = RowMarker.explanation(value);
-                Tooltip.install(row, why == null ? null : new Tooltip(why));
+                String from = RowMarker.origin(value, entry.origin());
+                String told = from == null ? why : (why == null ? from : from + "\n" + why);
+                Tooltip.install(row, told == null ? null : new Tooltip(told));
 
                 // Set mathematics is a tree of Text nodes with no text of its own, so without this a
                 // screen reader finds a bag of glyphs where the answer is.
-                row.setAccessibleText(RowMarker.spoken(position, value));
+                row.setAccessibleText(RowMarker.spoken(position, value, entry.origin()));
 
                 setGraphic(row);
                 setStyle(stackCellPadding);
@@ -1718,7 +1732,7 @@ public final class CalcWindow {
         });
         // Renumbering is a whole-list property: dropping entry 3 changes what every entry below is
         // called, so a targeted refresh would be wrong.
-        stack.addListener((javafx.collections.ListChangeListener<Expr>) c -> {
+        stack.addListener((javafx.collections.ListChangeListener<CalcState.Entry>) c -> {
             stackView.refresh();
             if (!stack.isEmpty()) {
                 stackView.scrollTo(stack.size() - 1);
@@ -1894,7 +1908,7 @@ public final class CalcWindow {
     /** The value of a stack entry as the window currently shows it, or null. */
     private Expr valueAt(int position) {
         int index = stack.size() - position;
-        return index < 0 || index >= stack.size() ? null : stack.get(index);
+        return index < 0 || index >= stack.size() ? null : stack.get(index).value();
     }
 
     /** Substitute a typed expression for the selected part. */
@@ -2913,12 +2927,12 @@ public final class CalcWindow {
 
     /** Visible for tests: the stack from bottom to top. */
     public List<Expr> stackContents() {
-        return read(() -> List.copyOf(stack));
+        return read(() -> stack.stream().map(CalcState.Entry::value).toList());
     }
 
     /** Visible for tests: the stack as it is displayed. */
     public List<String> stackDisplay() {
-        return read(() -> stack.stream().map(Formatter::format).toList());
+        return read(() -> stack.stream().map(e -> Formatter.format(e.value())).toList());
     }
 
     /**

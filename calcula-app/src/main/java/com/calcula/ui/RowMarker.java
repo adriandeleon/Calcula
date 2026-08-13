@@ -91,6 +91,21 @@ public final class RowMarker {
     }
 
     /**
+     * Where a value came from, as a sentence, or null when nothing knows or it would say nothing.
+     *
+     * <p>Silent when the origin is the value itself, which is most of the time: typing {@code 42}
+     * produces {@code 42}, and "from: 42" beside 42 is noise. What is worth saying is the case where
+     * the two differ — {@code [3, 5, 17, …]} came from {@code FactorInteger(2^64 - 1)}, and nothing
+     * on the row said so.
+     */
+    public static String origin(Expr value, Expr origin) {
+        if (origin == null || origin.equals(value)) {
+            return null;
+        }
+        return "from: " + Formatter.format(origin);
+    }
+
+    /**
      * The row read aloud, for assistive technology.
      *
      * <p>Set mathematics is a tree of {@code Text} nodes with no text of its own, so a screen reader
@@ -98,9 +113,16 @@ public final class RowMarker {
      * already tested as such, which makes it the one description guaranteed to say what the value
      * actually is.
      */
-    public static String spoken(int position, Expr value) {
-        String said = position + ": " + Formatter.format(value);
+    public static String spoken(int position, Expr value, Expr origin) {
+        StringBuilder said = new StringBuilder(position + ": " + Formatter.format(value));
+        String from = origin(value, origin);
+        if (from != null) {
+            said.append(", ").append(from);
+        }
         String why = explanation(value);
-        return why == null ? said : said + ". " + why.replace('\n', ' ');
+        if (why != null) {
+            said.append(". ").append(why.replace('\n', ' '));
+        }
+        return said.toString();
     }
 }
