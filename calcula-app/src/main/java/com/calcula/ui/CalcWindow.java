@@ -70,6 +70,7 @@ import com.calcula.key.KeyDispatcher;
 import com.calcula.key.Keymap;
 import com.calcula.machine.CalcState;
 import com.calcula.machine.Evaluator;
+import com.calcula.machine.FloatFormat;
 import com.calcula.machine.Machine;
 import com.calcula.machine.MachineException;
 import com.calcula.machine.Modes;
@@ -1047,6 +1048,56 @@ public final class CalcWindow {
                 m -> m.withFractions(!m.fractions()));
         registry.register(
                 "mode.precision", "Set precision", "Working digits for inexact arithmetic", this::setPrecision);
+        floatCommand("mode.floatNormal", "Show every digit", FloatFormat.Style.NORMAL);
+        floatCommand("mode.floatFixed", "Fixed decimal places", FloatFormat.Style.FIXED);
+        floatCommand("mode.floatScientific", "Scientific notation", FloatFormat.Style.SCIENTIFIC);
+        floatCommand("mode.floatEngineering", "Engineering notation", FloatFormat.Style.ENGINEERING);
+    }
+
+    /**
+     * One of the four display formats, taking its digit count from the input line.
+     *
+     * <p>The same gesture as precision, and for the same reason: type 4, press the key. A blank line
+     * keeps the digits already set, so switching between scientific and fixed does not silently reset
+     * how many places you asked for.
+     */
+    private void floatCommand(String id, String title, FloatFormat.Style style) {
+        String help = style == FloatFormat.Style.NORMAL
+                ? "Show inexact numbers in full, as they are stored"
+                : "Show inexact numbers " + title.toLowerCase(java.util.Locale.ROOT)
+                        + " — type the digits on the input line first";
+        registry.register(id, title, help, () -> setFloatStyle(style));
+    }
+
+    private void setFloatStyle(FloatFormat.Style style) {
+        String typed = input.getText().trim();
+        Integer digits = null;
+        if (!typed.isEmpty()) {
+            try {
+                digits = Integer.parseInt(typed);
+            } catch (NumberFormatException e) {
+                onMachine(m -> m.recordError("type the number of digits on the input line, or leave it empty"));
+                return;
+            }
+            if (digits < FloatFormat.MIN_DIGITS || digits > FloatFormat.MAX_DIGITS) {
+                onMachine(m -> m.recordError(
+                        "digits must be between " + FloatFormat.MIN_DIGITS + " and " + FloatFormat.MAX_DIGITS));
+                return;
+            }
+            input.clear();
+        }
+        Integer asked = digits;
+        onMachine(m -> {
+            FloatFormat current = m.modes().floats();
+            FloatFormat next = current.withStyle(style).withDigits(asked == null ? current.digits() : asked);
+            m.apply(new Op.SetModes(m.modes().withFloats(next)));
+            m.record(new TrailEntry(TrailEntry.Kind.NOTE, m.modes().describe()));
+        });
+    }
+
+    /** The style the stack is set in, carrying the display format the modes ask for. */
+    private MathStyle mathStyle() {
+        return MathStyle.of(mathSize, shownModes == null ? FloatFormat.NORMAL : shownModes.floats());
     }
 
     private void modeCommand(String id, String title, String help, java.util.function.UnaryOperator<Modes> change) {
@@ -1200,6 +1251,12 @@ public final class CalcWindow {
         keymap.bind("M-m g", "mode.gradians");
         keymap.bind("M-m p", "mode.precision");
         keymap.bind("M-m s", "mode.symbolic");
+        // n, x and e for normal, fixed and scientific: f is fractions and d is degrees, and e is how
+        // the notation itself is written. Engineering stays on the palette rather than take a letter
+        // that means nothing -- Calc users reach for d e, and there is no free e here.
+        keymap.bind("M-m n", "mode.floatNormal");
+        keymap.bind("M-m x", "mode.floatFixed");
+        keymap.bind("M-m e", "mode.floatScientific");
         keymap.bind("M-m f", "mode.fractions");
         // Calc's s t / s s / s r, one modifier further out. A bare s cannot be a prefix here: this
         // window has no separate minibuffer, so every plain letter has to keep reaching the input
@@ -1778,8 +1835,8 @@ public final class CalcWindow {
                         : GraphicsScene.isGraphics(value)
                                 ? sceneFor(value)
                                 : reading != null
-                                        ? MathLayout.renderReading(reading, MathStyle.of(mathSize))
-                                        : MathLayout.render(value, MathStyle.of(mathSize));
+                                        ? MathLayout.renderReading(reading, mathStyle())
+                                        : MathLayout.render(value, mathStyle());
                 content.getStyleClass().add("stack-value");
                 int position = stack.size() - getIndex();
                 if (reading == null) {
@@ -2943,8 +3000,9 @@ public final class CalcWindow {
             previewHost.getChildren().setAll(said);
         } else {
             // The same size as the stack, on purpose: this is a promise about what is going to land
-            // there, and a promise set at a different size is a weaker one.
-            previewHost.getChildren().setAll(MathLayout.render(preview.parsed(), MathStyle.of(mathSize)));
+            // there, and a promise set at a different size is a weaker one. The same display format
+            // for exactly the same reason.
+            previewHost.getChildren().setAll(MathLayout.render(preview.parsed(), mathStyle()));
         }
         previewHost.setVisible(true);
         previewHost.setManaged(true);

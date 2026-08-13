@@ -4,6 +4,8 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontPosture;
 import javafx.scene.text.FontWeight;
 
+import com.calcula.machine.FloatFormat;
+
 /**
  * Size and style context for one piece of a formula — TeX's notion of "style", reduced to what a
  * renderer without an OpenType MATH table can actually use.
@@ -15,8 +17,10 @@ import javafx.scene.text.FontWeight;
  * @param family font family for the whole formula
  * @param baseSize size at level 0, in points
  * @param level 0 = normal, 1 = script, 2 = scriptscript; never more
+ * @param floats how an inexact number is written out, which is a mode rather than a font decision --
+ *     it rides here because this record is what every part of a formula already carries
  */
-public record MathStyle(String family, double baseSize, int level) {
+public record MathStyle(String family, double baseSize, int level, FloatFormat floats) {
 
     /** TeX's own ratios: 100%, then 70%, then 50%, and no further. */
     private static final double[] SCALE = {1.0, 0.7, 0.5};
@@ -34,12 +38,19 @@ public record MathStyle(String family, double baseSize, int level) {
     public static final String DEFAULT_FAMILY = com.calcula.ui.Fonts.MATH;
 
     public static MathStyle of(double baseSize) {
-        return new MathStyle(DEFAULT_FAMILY, baseSize, 0);
+        return of(baseSize, FloatFormat.NORMAL);
+    }
+
+    public static MathStyle of(double baseSize, FloatFormat floats) {
+        return new MathStyle(DEFAULT_FAMILY, baseSize, 0, floats);
     }
 
     public MathStyle {
         if (level < 0 || level > MAX_LEVEL) {
             throw new IllegalArgumentException("level out of range: " + level);
+        }
+        if (floats == null) {
+            floats = FloatFormat.NORMAL;
         }
     }
 
@@ -61,7 +72,7 @@ public record MathStyle(String family, double baseSize, int level) {
 
     /** One level smaller, stopping at scriptscript. */
     public MathStyle script() {
-        return level >= MAX_LEVEL ? this : new MathStyle(family, baseSize, level + 1);
+        return level >= MAX_LEVEL ? this : new MathStyle(family, baseSize, level + 1, floats);
     }
 
     /** True in script or scriptscript, where TeX suppresses binary and relational spacing. */
