@@ -82,13 +82,15 @@ syntax before they need a table entry — see [#5](https://github.com/adriandele
 
 ### Not built
 
-**Variables** ([#2](https://github.com/adriandeleon/Calcula/issues/2)) — and this one is a bug rather
-than an absence. `Op.Store` and `Op.Recall` are implemented in `Machine`, `CalcState` carries the map,
-`SheetFormat` reads and writes `var n 42`. Nothing emits either operation, nothing is bound under `s`,
-and `Evaluator` never reads the bindings — it is `(Expr, Modes) -> Expr` and has no access to them. So
-the map is empty for the life of every session, a hand-written `.calc` carrying variables loads and is
-then unusable, and the application cannot produce one. The file format writes state only the file
-format knows how to make. Calc spends a chapter on `s t`, `s r`, `s 0`–`s 9`, `s l` and `s d`.
+~~**Variables**~~ ([#2](https://github.com/adriandeleon/Calcula/issues/2),
+[#24](https://github.com/adriandeleon/Calcula/issues/24)) — done, and worth keeping the diagnosis
+because it is the most instructive thing in this document. It was never an absence. `Op.Store` and
+`Op.Recall` were implemented in `Machine` and covered by tests; `SheetFormat` read and wrote
+`var n 42`. Nothing emitted either operation, nothing was bound to a key, and `Evaluator` never read
+the map — so it was empty for the life of every session, and the file format persisted state only the
+file format could make. **A feature can be complete, correct, tested, and unreachable**, and no pure
+test can see that, because a pure test constructs the operation it is testing. Calc's remaining
+storage chapter — `s 0`–`s 9`, `s l` let-bindings, `s d` declarations — is still open.
 
 **Rewrite rules** ([#7](https://github.com/adriandeleon/Calcula/issues/7)) — `a r`, with patterns,
 meta-variables, conditions and iteration control. Calc's extensibility story: how you teach it
@@ -108,13 +110,11 @@ in a form the parser cannot read is data loss at *save* time. `Expr.Num` being s
 means adding one is a deliberate widening with a compiler-enforced list of everywhere that must learn
 about it, which is the right way round.
 
-**Vectors, on the stack rather than in an expression**
-([#10](https://github.com/adriandeleon/Calcula/issues/10)) — the *functions* turned out to be there
-and merely unfindable: `Map`, `Fold`, `Apply`, `Union`, `Range` and `Table` all answer, and are
-catalogued as of #3. What is missing is the stack half — Calc's `v p` and `v u`, which pack the top N
-entries into a vector and unpack one back onto the stack. Without them the only way to get a vector is
-to type it out in full, which is what makes statistics feel further away than the function list
-suggests, and it is the gesture rather than the arithmetic that is absent.
+~~**Vectors, on the stack rather than in an expression**~~
+([#10](https://github.com/adriandeleon/Calcula/issues/10)) — done. The *functions* were never
+missing, only unfindable; what was absent was the gesture. `M-v p` packs the top values into a list
+and `M-v u` unpacks one, so the list half of the engine finally has something to take. That was the
+last thing #6 was waiting on.
 
 **Binary and word operations** ([#12](https://github.com/adriandeleon/Calcula/issues/12)) — and, or,
 xor, shifts and rotates against a configurable word size, which is a mode because the operations are
@@ -165,10 +165,12 @@ The three cheap ones are done. What is left, in the order I would take it:
    out to be one `Modes` field and one *layout* branch, not a `Formatter` one. A stack is saved by
    formatting it, so rounding there would be data loss at save time; the format rides on `MathStyle`
    with the digit grouping instead.
-4. **[#24](https://github.com/adriandeleon/Calcula/issues/24), list what is bound.** The loose end #2
-   left: a binding announces itself once and is then invisible.
-5. **[#10](https://github.com/adriandeleon/Calcula/issues/10), pack and unpack the stack.** Two
-   commands, and it unblocks the usable half of #6 — the statistics functions are in and there is
-   still no way to get a vector to give them.
+4. ~~**[#24](https://github.com/adriandeleon/Calcula/issues/24), list what is bound.**~~ Done —
+   `M-s l`, and it turned up a real bug on the way: `CalcState` was finishing with `Map.copyOf`, so a
+   session's bindings came back in an unspecified order and a saved sheet reshuffled itself.
+5. ~~**[#10](https://github.com/adriandeleon/Calcula/issues/10), pack and unpack the stack.**~~ Done.
 6. **[#7](https://github.com/adriandeleon/Calcula/issues/7), rewrite rules.** The large one, and the
    one that would most change what Calcula is.
+7. **[#15](https://github.com/adriandeleon/Calcula/issues/15), stack ergonomics.** Last-args, editing
+   an entry, yanking from the trail — four small things that together are most of the difference
+   between a stack you operate and a stack you look at.
