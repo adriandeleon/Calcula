@@ -10,6 +10,7 @@ import com.calcula.bits.Bitwise;
 import com.calcula.expr.Expr;
 import com.calcula.machine.FloatFormat;
 import com.calcula.machine.Modes;
+import com.calcula.machine.Simplification;
 import com.calcula.machine.TrailEntry;
 import com.calcula.parse.Formatter;
 import com.calcula.parse.Parser;
@@ -62,6 +63,7 @@ public final class SheetFormat {
         out.append("mode precision ").append(modes.precision()).append('\n');
         out.append("mode symbolic ").append(modes.symbolic()).append('\n');
         out.append("mode fractions ").append(modes.fractions()).append('\n');
+        out.append("mode simplify ").append(modes.simplification().id()).append('\n');
         out.append("mode word ").append(modes.wordSize()).append('\n');
         out.append("mode radix ").append(modes.radix()).append('\n');
         out.append("mode float ")
@@ -128,6 +130,7 @@ public final class SheetFormat {
         FloatFormat floats = Modes.DEFAULTS.floats();
         int wordSize = Modes.DEFAULTS.wordSize();
         int radix = Modes.DEFAULTS.radix();
+        Simplification simplification = Modes.DEFAULTS.simplification();
 
         for (int i = 1; i < lines.size(); i++) {
             String line = lines.get(i).strip();
@@ -158,6 +161,7 @@ public final class SheetFormat {
                         case "float" -> floats = floatFormat(value, at);
                         case "word" -> wordSize = bounded(value, at, Bitwise.MIN_WORD_SIZE, Bitwise.MAX_WORD_SIZE);
                         case "radix" -> radix = bounded(value, at, Modes.MIN_RADIX, Modes.MAX_RADIX);
+                        case "simplify" -> simplification = simplification(value, at);
                         default -> throw new SheetException("line " + at + ": unknown mode '" + setting + "'");
                     }
                 }
@@ -165,7 +169,10 @@ public final class SheetFormat {
             }
         }
         return new Sheet(
-                stack, variables, new Modes(angle, precision, symbolic, fractions, floats, wordSize, radix), trail);
+                stack,
+                variables,
+                new Modes(angle, precision, symbolic, fractions, floats, wordSize, radix, simplification),
+                trail);
     }
 
     /**
@@ -191,6 +198,14 @@ public final class SheetFormat {
             // One catch covers both halves: not a number at all, and a number FloatFormat refuses.
             throw new SheetException("line " + at + ": '" + rest + "' is not a usable number of digits");
         }
+    }
+
+    private static Simplification simplification(String value, int at) {
+        Simplification level = Simplification.byId(value);
+        if (level == null) {
+            throw new SheetException("line " + at + ": unknown simplification level '" + value + "'");
+        }
+        return level;
     }
 
     /** A whole number in a range, refused by line number like everything else here. */

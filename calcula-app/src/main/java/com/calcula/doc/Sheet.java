@@ -29,7 +29,7 @@ public record Sheet(List<Expr> stack, Map<String, Expr> variables, Modes modes, 
      *
      * @see SheetFormat#read
      */
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 3;
 
     public static final Sheet EMPTY = new Sheet(List.of(), Map.of(), Modes.DEFAULTS, List.of());
 
