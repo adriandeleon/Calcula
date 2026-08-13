@@ -130,10 +130,10 @@ good foundation, since every surface already routes through `runCommand` and a r
 command ids is a plausible macro. Worth being honest that Calc's programming layer exists partly
 because it lives inside Emacs and inherits the macro machinery for free.
 
-**Display and mode gaps** — no float format at all
-([#4](https://github.com/adriandeleon/Calcula/issues/4)): `Formatter` prints a `Flt` with
-`toPlainString()` and nothing else, so at the precision of 1000 that `Modes` permits, one number is a
-thousand characters across the stack. And four missing modes
+**Display and mode gaps** — the float format is in as of
+[#4](https://github.com/adriandeleon/Calcula/issues/4) (normal, fixed, scientific and engineering on
+`M-m n`/`x`/`e`), though scientific still renders as `1.23e5` rather than a typeset `1.23 × 10⁵`.
+Still missing: four modes
 ([#16](https://github.com/adriandeleon/Calcula/issues/16)): simplification level, matrix/scalar,
 polar, working. The README's own argument — that a mode which displays and changes nothing is a wrong
 answer the user has been told to expect — runs in reverse as well. A mode line with four entries reads
@@ -154,16 +154,21 @@ the same key as a number is a different bargain, and mostly a better one.
 
 ## Where to start
 
+The three cheap ones are done. What is left, in the order I would take it:
+
 1. ~~**[#2](https://github.com/adriandeleon/Calcula/issues/2), variables.**~~ Done. Storing binds,
    `=` resolves, and nothing else does — which is Calc's division and the only real decision in it.
 2. ~~**[#3](https://github.com/adriandeleon/Calcula/issues/3), grow the catalogue.**~~ Done, and it
    was not the table edit it looked like: every candidate had to be run first, which is how the units
    correction above was found.
-3. **[#4](https://github.com/adriandeleon/Calcula/issues/4), float display.** One `Modes` field and one
-   `Formatter` branch, and it fixes something visible on every inexact answer.
-4. **[#7](https://github.com/adriandeleon/Calcula/issues/7), rewrite rules.** The large one, and the
+3. ~~**[#4](https://github.com/adriandeleon/Calcula/issues/4), float display.**~~ Done — and it turned
+   out to be one `Modes` field and one *layout* branch, not a `Formatter` one. A stack is saved by
+   formatting it, so rounding there would be data loss at save time; the format rides on `MathStyle`
+   with the digit grouping instead.
+4. **[#24](https://github.com/adriandeleon/Calcula/issues/24), list what is bound.** The loose end #2
+   left: a binding announces itself once and is then invisible.
+5. **[#10](https://github.com/adriandeleon/Calcula/issues/10), pack and unpack the stack.** Two
+   commands, and it unblocks the usable half of #6 — the statistics functions are in and there is
+   still no way to get a vector to give them.
+6. **[#7](https://github.com/adriandeleon/Calcula/issues/7), rewrite rules.** The large one, and the
    one that would most change what Calcula is.
-
-Next after those, and cheaper than they read: [#24](https://github.com/adriandeleon/Calcula/issues/24)
-(nothing lists what is bound, which is the loose end #2 left) and the stack half of
-[#10](https://github.com/adriandeleon/Calcula/issues/10).
