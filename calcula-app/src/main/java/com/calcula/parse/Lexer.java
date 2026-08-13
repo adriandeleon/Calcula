@@ -165,7 +165,9 @@ final class Lexer {
                         return new Token(Kind.OP, two, start);
                     }
                 }
-                if ("+-*/^=<>!".indexOf(c) >= 0) {
+                // @ ' and " are the hms markers. Free to claim: none of them meant anything before,
+                // there are no string literals here for " to open and no derivative notation for '.
+                if ("+-*/^=<>!@'\"".indexOf(c) >= 0) {
                     i++;
                     return new Token(Kind.OP, String.valueOf(c), start);
                 }

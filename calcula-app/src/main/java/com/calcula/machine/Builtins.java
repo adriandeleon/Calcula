@@ -11,6 +11,7 @@ import com.calcula.error.ErrorForm;
 import com.calcula.expr.Expr;
 import com.calcula.expr.Exprs;
 import com.calcula.finance.Finance;
+import com.calcula.hms.HmsForm;
 import com.calcula.modular.ModuloForm;
 
 /**
@@ -64,7 +65,11 @@ public final class Builtins {
                 // every ordinary sum in the calculator.
                 case "Plus", "Subtract", "Times", "Divide", "Minus", "Power" -> {
                     Expr ring = inRing(head, args);
-                    yield ring != null ? ring : measured(head, args, mc);
+                    if (ring != null) {
+                        yield ring;
+                    }
+                    Expr duration = clock(head, args, mc);
+                    yield duration != null ? duration : measured(head, args, mc);
                 }
                 case "BitAnd" -> bits(args, 2, w -> Bitwise.and(w[0], w[1], modes.wordSize()));
                 case "BitOr" -> bits(args, 2, w -> Bitwise.or(w[0], w[1], modes.wordSize()));
@@ -219,6 +224,118 @@ public final class Builtins {
 
     /** The head a ring member is held as. */
     public static final String MODULO = "Modulo";
+
+    /**
+     * Arithmetic where at least one argument is a duration.
+     *
+     * <p>Deliberately a smaller set of operations than the other forms get, because most of them have
+     * no reading on a clock. Two durations <em>add</em>; two durations <em>multiplied</em> would be an
+     * area of time. A duration divided by a number is a shorter duration, and a duration divided by a
+     * duration is a count — how many half-hours are in a day is 48, not 48 seconds. Anything else
+     * answers null and the expression stands as written, which is better than an answer in the wrong
+     * kind.
+     *
+     * <p>A plain number is not quietly promoted to a duration either. Emacs Calc reads a bare number
+     * beside an hms form as hours, and it may well be worth following, but guessing at it here would
+     * turn {@code 1@ 0\' 0" + 30} into thirty-one hours when the user plainly meant thirty minutes.
+     */
+    private static Expr clock(String head, List<Expr> args, MathContext mc) {
+        if (args.stream().noneMatch(Builtins::isDuration)) {
+            return null;
+        }
+        List<HmsForm> durations = new ArrayList<>();
+        List<BigDecimal> plain = new ArrayList<>();
+        for (Expr arg : args) {
+            HmsForm form = asDuration(arg, mc);
+            if (form != null) {
+                durations.add(form);
+            } else {
+                BigDecimal number = decimal(arg, mc);
+                if (number == null) {
+                    return null; // a symbol in there: leave the whole thing standing
+                }
+                plain.add(number);
+            }
+        }
+        return switch (head) {
+            case "Plus" -> plain.isEmpty() ? hms(reduceClock(durations, HmsForm::add)) : null;
+            case "Subtract" ->
+                plain.isEmpty() && durations.size() == 2 ? hms(durations.get(0).subtract(durations.get(1))) : null;
+            case "Minus" ->
+                plain.isEmpty() && durations.size() == 1 ? hms(durations.get(0).negate()) : null;
+            case "Times" -> durations.size() == 1 ? hms(scaleBy(durations.get(0), plain, mc)) : null;
+            case "Divide" -> divideClock(args, durations, plain, mc);
+            default -> null;
+        };
+    }
+
+    private static Expr divideClock(List<Expr> args, List<HmsForm> durations, List<BigDecimal> plain, MathContext mc) {
+        if (args.size() != 2) {
+            return null;
+        }
+        // How many of one fit in the other, which is a count and not a duration.
+        if (durations.size() == 2) {
+            return Exprs.of(durations.get(0).ratio(durations.get(1), mc));
+        }
+        // Only ever the duration over the number: a number over a duration is a rate, not a time.
+        return durations.size() == 1 && isDuration(args.get(0))
+                ? hms(durations.get(0).divideBy(plain.get(0), mc))
+                : null;
+    }
+
+    private static HmsForm scaleBy(HmsForm form, List<BigDecimal> factors, MathContext mc) {
+        HmsForm scaled = form;
+        for (BigDecimal factor : factors) {
+            scaled = scaled.scale(factor, mc);
+        }
+        return scaled;
+    }
+
+    private static HmsForm reduceClock(List<HmsForm> forms, java.util.function.BinaryOperator<HmsForm> op) {
+        HmsForm acc = forms.get(0);
+        for (HmsForm next : forms.subList(1, forms.size())) {
+            acc = op.apply(acc, next);
+        }
+        return acc;
+    }
+
+    private static boolean isDuration(Expr e) {
+        return e instanceof Expr.Call c && c.head().equals(HMS) && c.arity() == 3;
+    }
+
+    /** A duration, or null for anything that is not one. */
+    private static HmsForm asDuration(Expr e, MathContext mc) {
+        if (!isDuration(e)) {
+            return null;
+        }
+        Expr.Call c = (Expr.Call) e;
+        BigDecimal h = decimal(c.arg(0), mc);
+        BigDecimal m = decimal(c.arg(1), mc);
+        BigDecimal s = decimal(c.arg(2), mc);
+        return h == null || m == null || s == null ? null : HmsForm.ofParts(h, m, s);
+    }
+
+    /**
+     * A duration as a call again, with the sign on every part.
+     *
+     * <p>All three or none: the parts are summed on the way back in, so a form that kept its minus on
+     * the hours alone would read as minus-an-hour <em>plus</em> half an hour the next time it was
+     * touched — and would be wrong by an hour rather than obviously broken.
+     */
+    private static Expr hms(HmsForm form) {
+        BigInteger hours = form.hours();
+        BigInteger minutes = form.minutes();
+        BigDecimal seconds = form.seconds();
+        if (form.signum() < 0) {
+            hours = hours.negate();
+            minutes = minutes.negate();
+            seconds = seconds.negate();
+        }
+        return Exprs.call(HMS, Exprs.of(hours), Exprs.of(minutes), Exprs.of(seconds));
+    }
+
+    /** The head a duration is held as. */
+    public static final String HMS = "HMS";
 
     /**
      * Arithmetic where at least one argument is a measurement.

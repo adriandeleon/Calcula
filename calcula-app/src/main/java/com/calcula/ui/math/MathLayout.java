@@ -8,6 +8,7 @@ import javafx.scene.Node;
 import javafx.scene.layout.Region;
 import javafx.scene.text.Text;
 
+import com.calcula.expr.Arith;
 import com.calcula.expr.Canonical;
 import com.calcula.expr.Expr;
 import com.calcula.expr.Expr.Call;
@@ -18,6 +19,7 @@ import com.calcula.expr.Expr.Rat;
 import com.calcula.expr.Expr.Sym;
 import com.calcula.expr.ExprPath;
 import com.calcula.expr.Exprs;
+import com.calcula.hms.HmsForm;
 import com.calcula.parse.Names;
 
 /**
@@ -281,6 +283,12 @@ public final class MathLayout {
                                 style,
                                 FenceNode.Kind.BRACKET)
                         : function(c, style, path);
+            // Set as it is typed, unlike +/- against ±: the markers ARE the mathematical notation
+            // here, and there is no second glyph to reach for.
+            case "HMS" -> {
+                HmsForm duration = duration(c);
+                yield duration != null ? number(duration.format(), style) : function(c, style, path);
+            }
             case "PlusMinus" ->
                 c.arity() == 2
                         ? row(
@@ -320,6 +328,21 @@ public final class MathLayout {
     }
 
     // ------------------------------------------------------------------ leaves
+
+    /** The three parts as a duration, or null when they are not all numbers. */
+    private static HmsForm duration(Call c) {
+        if (c.arity() != 3) {
+            return null;
+        }
+        java.math.BigDecimal[] parts = new java.math.BigDecimal[3];
+        for (int i = 0; i < 3; i++) {
+            if (!(c.arg(i) instanceof Expr.Num n)) {
+                return null;
+            }
+            parts[i] = Arith.toDecimal(n, Arith.DEFAULT_PRECISION);
+        }
+        return HmsForm.ofParts(parts[0], parts[1], parts[2]);
+    }
 
     private static Node number(String text, MathStyle style) {
         Text t = new Text(text.replace("-", MINUS));

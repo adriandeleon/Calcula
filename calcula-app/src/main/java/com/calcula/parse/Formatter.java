@@ -1,16 +1,20 @@
 package com.calcula.parse;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.calcula.expr.Arith;
 import com.calcula.expr.Canonical;
 import com.calcula.expr.Expr;
 import com.calcula.expr.Expr.Call;
 import com.calcula.expr.Expr.Flt;
 import com.calcula.expr.Expr.Int;
+import com.calcula.expr.Expr.Num;
 import com.calcula.expr.Expr.Rat;
 import com.calcula.expr.Expr.Sym;
 import com.calcula.expr.Exprs;
+import com.calcula.hms.HmsForm;
 
 /**
  * Renders an {@link Expr} back to the notation {@link Parser} accepts, with the fewest parentheses that
@@ -127,6 +131,14 @@ public final class Formatter {
                             PREC_ERROR,
                             parentPrec,
                             weakSide);
+                }
+            }
+            case "HMS" -> {
+                // Rendered by the form itself rather than by writing the three parts out here, so the
+                // one leading minus and the carry past sixty cannot drift from what the arithmetic does.
+                HmsForm duration = durationOf(c);
+                if (duration != null) {
+                    return bracket(duration.format(), signPrec(duration.signum(), PREC_ATOM), parentPrec, weakSide);
                 }
             }
             case "PlusMinus" -> {
@@ -252,6 +264,21 @@ public final class Formatter {
             case "Rule" -> "->";
             default -> null;
         };
+    }
+
+    /** The three parts as a duration, or null when they are not all numbers. */
+    private static HmsForm durationOf(Call c) {
+        if (c.arity() != 3) {
+            return null;
+        }
+        BigDecimal[] parts = new BigDecimal[3];
+        for (int i = 0; i < 3; i++) {
+            if (!(c.arg(i) instanceof Num n)) {
+                return null;
+            }
+            parts[i] = Arith.toDecimal(n, Arith.DEFAULT_PRECISION);
+        }
+        return HmsForm.ofParts(parts[0], parts[1], parts[2]);
     }
 
     private static int precedence(String head) {

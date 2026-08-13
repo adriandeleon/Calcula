@@ -200,7 +200,9 @@ public final class Parser {
         Token t = next();
         switch (t.kind()) {
             case NUMBER -> {
-                return number(t);
+                Expr n = number(t);
+                Expr duration = hmsAfter(n);
+                return duration != null ? duration : n;
             }
             case SYMBOL -> {
                 if (peek().kind() == Kind.LPAREN) {
@@ -225,6 +227,61 @@ public final class Parser {
             default -> throw new ParseException("unexpected " + t, t.pos());
         }
     }
+
+    /**
+     * {@code 1@ 30' 0"} — hours, minutes and seconds, and any shorter tail of it.
+     *
+     * <p>A literal rather than an operator, which is why it is read here and not at a precedence level
+     * the way {@code +/-} and {@code mod} are. There is nothing infix about it: the markers are
+     * suffixes on the parts, and {@code 30'} on its own is as complete a duration as the whole thing.
+     *
+     * <p>Each part after the first must carry its marker. {@code 1@ 30} is refused rather than read as
+     * an hour and a half, because there is no implicit multiplication here either — so the alternative
+     * to a clear message is a parse error further along that says nothing about the real mistake.
+     */
+    private Expr hmsAfter(Expr first) {
+        if (peek().kind() != Kind.OP) {
+            return null;
+        }
+        return switch (peek().text()) {
+            case "@" -> {
+                next();
+                Expr minutes = Exprs.ZERO;
+                Expr seconds = Exprs.ZERO;
+                if (peek().kind() == Kind.NUMBER) {
+                    minutes = markedNumber("'");
+                    if (peek().kind() == Kind.NUMBER) {
+                        seconds = markedNumber("\"");
+                    }
+                }
+                yield Exprs.call(HMS, first, minutes, seconds);
+            }
+            case "'" -> {
+                next();
+                Expr seconds = peek().kind() == Kind.NUMBER ? markedNumber("\"") : Exprs.ZERO;
+                yield Exprs.call(HMS, Exprs.ZERO, first, seconds);
+            }
+            case "\"" -> {
+                next();
+                yield Exprs.call(HMS, Exprs.ZERO, Exprs.ZERO, first);
+            }
+            default -> null;
+        };
+    }
+
+    /** The next number, which must be followed by {@code mark}. */
+    private Expr markedNumber(String mark) {
+        Expr value = number(next());
+        Token t = peek();
+        if (t.kind() != Kind.OP || !t.text().equals(mark)) {
+            throw new ParseException("expected " + mark + " after this part of the time", t.pos());
+        }
+        next();
+        return value;
+    }
+
+    /** The head a duration is held as, shared with the formatter and the evaluator. */
+    public static final String HMS = "HMS";
 
     /** Comma-separated expressions up to a closing token, which is consumed. Handles the empty case. */
     private List<Expr> arguments(Kind closer, String closerText) {
