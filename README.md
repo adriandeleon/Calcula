@@ -370,6 +370,20 @@ the map was reachable. Binding something to `x` must not change what `deriv(x^2,
 never rewrites the stack; `C-x e` is where you ask for the substitution, and it is one pass, so a
 binding that mentions itself terminates instead of recursing.
 
+### Rings
+
+`5 mod 7` is a number in a ring, and arithmetic **stays** in it: adding `4 mod 7` gives `2 mod 7`
+rather than nine, and `(7 mod 13)^1000000` is instant where raising and then reducing is a number
+with 845,000 digits.
+
+Distinct from the `mod` *function*, which takes a remainder once and hands back an ordinary integer —
+`mod(5, 7) + mod(4, 7)` is nine, and correct. Claiming the infix word cost nothing: `a mod b` was a
+parse error before (there is no implicit multiplication), and the function form is a name followed by
+an open paren, which never reaches the operator.
+
+Division is multiplication by the inverse and does not always exist: `1/2 mod 4` has no answer, which
+is a much better thing to say than the plausible wrong number a floor division would produce.
+
 ### Ranges
 
 `1 .. 2` is a range, and arithmetic carries the bounds: `(1 .. 2) * (3 .. 4)` is `3 .. 8`. Typed with

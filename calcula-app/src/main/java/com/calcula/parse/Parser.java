@@ -92,6 +92,13 @@ public final class Parser {
             next();
             return Exprs.call("PlusMinus", left, additive());
         }
+        // A word rather than a punctuation mark, so it is matched on a SYMBOL token. Safe to claim:
+        // `a mod b` is currently a parse error (there is no implicit multiplication), and the mod
+        // FUNCTION is a symbol followed by an open paren, which never reaches here.
+        if (peek().kind() == Kind.SYMBOL && peek().text().equals("mod")) {
+            next();
+            return Exprs.call("Modulo", left, additive());
+        }
         if (peek().kind() == Kind.OP && peek().text().equals("..")) {
             next();
             // The ENGINE'S own shape, Interval({a, b}), and not a two-argument call: Interval(1, 2)

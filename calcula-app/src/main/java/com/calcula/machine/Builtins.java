@@ -11,6 +11,7 @@ import com.calcula.error.ErrorForm;
 import com.calcula.expr.Expr;
 import com.calcula.expr.Exprs;
 import com.calcula.finance.Finance;
+import com.calcula.modular.ModuloForm;
 
 /**
  * The functions this calculator implements itself.
@@ -61,7 +62,10 @@ public final class Builtins {
                 // applyNumeric: an error form is a Call, so the numeric fold never sees a row of
                 // numbers to fold. Answers null the moment no argument is a measurement, which is
                 // every ordinary sum in the calculator.
-                case "Plus", "Subtract", "Times", "Divide", "Minus", "Power" -> measured(head, args, mc);
+                case "Plus", "Subtract", "Times", "Divide", "Minus", "Power" -> {
+                    Expr ring = inRing(head, args);
+                    yield ring != null ? ring : measured(head, args, mc);
+                }
                 case "BitAnd" -> bits(args, 2, w -> Bitwise.and(w[0], w[1], modes.wordSize()));
                 case "BitOr" -> bits(args, 2, w -> Bitwise.or(w[0], w[1], modes.wordSize()));
                 case "BitXor" -> bits(args, 2, w -> Bitwise.xor(w[0], w[1], modes.wordSize()));
@@ -141,6 +145,80 @@ public final class Builtins {
     private static int places(BigInteger count) {
         return count.intValueExact();
     }
+
+    /**
+     * Arithmetic where at least one argument is a number in a ring.
+     *
+     * <p>Tried before measurements, and they cannot both apply: a modulo form is whole numbers and a
+     * measurement is decimals with an error, so nothing is both. An ordinary integer joins whichever
+     * ring the other operand is in, which is what makes {@code (5 mod 7) + 4} mean what it looks like.
+     */
+    private static Expr inRing(String head, List<Expr> args) {
+        if (args.stream().noneMatch(Builtins::isRingMember)) {
+            return null;
+        }
+        BigInteger modulus = args.stream()
+                .filter(Builtins::isRingMember)
+                .map(e -> ((Expr.Int) ((Expr.Call) e).arg(1)).value())
+                .findFirst()
+                .orElse(null);
+        List<ModuloForm> forms = new ArrayList<>(args.size());
+        for (Expr arg : args) {
+            ModuloForm form = asRingMember(arg, modulus);
+            if (form == null) {
+                return null;
+            }
+            forms.add(form);
+        }
+        ModuloForm result =
+                switch (head) {
+                    case "Plus" -> reduceRing(forms, ModuloForm::add);
+                    case "Subtract" -> forms.size() == 2 ? forms.get(0).subtract(forms.get(1)) : null;
+                    case "Times" -> reduceRing(forms, ModuloForm::multiply);
+                    case "Divide" -> forms.size() == 2 ? forms.get(0).divide(forms.get(1)) : null;
+                    case "Minus" -> forms.size() == 1 ? forms.get(0).negate() : null;
+                    // Only the BASE is in the ring: an exponent is a count of multiplications, not a
+                    // member of it, so 2^(3 mod 7) is not something this should quietly answer.
+                    case "Power" ->
+                        forms.size() == 2 && args.get(1) instanceof Expr.Int exponent
+                                ? forms.get(0).power(exponent.value())
+                                : null;
+                    default -> null;
+                };
+        return result == null ? null : modulo(result);
+    }
+
+    private static ModuloForm reduceRing(List<ModuloForm> forms, java.util.function.BinaryOperator<ModuloForm> op) {
+        ModuloForm acc = forms.get(0);
+        for (ModuloForm next : forms.subList(1, forms.size())) {
+            acc = op.apply(acc, next);
+        }
+        return acc;
+    }
+
+    private static boolean isRingMember(Expr e) {
+        return e instanceof Expr.Call c
+                && c.head().equals(MODULO)
+                && c.arity() == 2
+                && c.arg(0) instanceof Expr.Int
+                && c.arg(1) instanceof Expr.Int;
+    }
+
+    /** A ring member, or a plain whole number joining that ring; null for anything else. */
+    private static ModuloForm asRingMember(Expr e, BigInteger modulus) {
+        if (isRingMember(e)) {
+            Expr.Call c = (Expr.Call) e;
+            return new ModuloForm(((Expr.Int) c.arg(0)).value(), ((Expr.Int) c.arg(1)).value());
+        }
+        return e instanceof Expr.Int whole ? new ModuloForm(whole.value(), modulus) : null;
+    }
+
+    private static Expr modulo(ModuloForm form) {
+        return Exprs.call(MODULO, Exprs.of(form.value()), Exprs.of(form.modulus()));
+    }
+
+    /** The head a ring member is held as. */
+    public static final String MODULO = "Modulo";
 
     /**
      * Arithmetic where at least one argument is a measurement.
