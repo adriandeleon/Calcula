@@ -1639,15 +1639,26 @@ public final class CalcWindow {
                 // entry number on, which is why the two are aligned differently below.
                 boolean picture = PlotValue.isPlot(value) || GraphicsScene.isGraphics(value);
 
+                // A list of pairs that FactorInteger produced is a factorisation, and knowing that
+                // needs the origin — the value alone cannot be told from a matrix somebody typed.
+                Expr reading = ResultShape.reading(value, entry.origin());
+
                 Region content = PlotValue.isPlot(value)
                         ? plotFor(value)
                         : GraphicsScene.isGraphics(value)
                                 ? sceneFor(value)
-                                : MathLayout.render(value, MathStyle.of(mathSize));
+                                : reading != null
+                                        ? MathLayout.renderReading(reading, MathStyle.of(mathSize))
+                                        : MathLayout.render(value, MathStyle.of(mathSize));
                 content.getStyleClass().add("stack-value");
                 int position = stack.size() - getIndex();
-                markSelection(content, position);
-                installSubtermMouse(content, position);
+                if (reading == null) {
+                    // Selection addresses parts of the VALUE. A reading is a different tree, so there
+                    // is nothing here a click could correctly resolve to — and nothing is tagged,
+                    // so this is skipping work rather than suppressing a feature.
+                    markSelection(content, position);
+                    installSubtermMouse(content, position);
+                }
 
                 // Two boxes, because the rail and the formula want opposite alignments and one box
                 // cannot give both. Inside: baseline, so the entry number sits on the formula's own
