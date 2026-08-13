@@ -98,6 +98,9 @@ public final class SurfaceCanvas extends Region {
      */
     private static final int SHADES = 32;
 
+    /** Roughly how many wireframe lines to draw each way, however finely the surface is sampled. */
+    private static final int WIREFRAME_LINES = 20;
+
     /** How far a tick mark sticks out of the axis, and where its number starts. */
     private static final double TICK_LENGTH = 4;
 
@@ -156,6 +159,11 @@ public final class SurfaceCanvas extends Region {
     /** Visible for tests: the ground colour the surface is made of, as the theme resolved it. */
     Color surfaceFill() {
         return surfaceFill.get();
+    }
+
+    /** Visible for tests: the colour the wireframe is drawn in. */
+    Color curveColour() {
+        return curveColor.get();
     }
 
     @Override
@@ -273,7 +281,10 @@ public final class SurfaceCanvas extends Region {
         cells.sort((a, b) -> Double.compare(a.depth, b.depth));
 
         Color[] shades = shades();
-        g.setStroke(curveColor.get());
+        Color curve = curveColor.get();
+        int last = n - 1;
+        int every = wireframeStride(n);
+        g.setStroke(curve);
         g.setLineWidth(1);
         double[] xs = new double[5];
         double[] ys = new double[5];
@@ -286,11 +297,44 @@ public final class SurfaceCanvas extends Region {
             ys[4] = ys[0];
             g.setFill(shades[cell.shade]);
             g.fillPolygon(xs, ys, 4);
-            // Outlined as well as filled: the fill gives the solid, the mesh gives the shape. Fill
-            // alone on a smoothly shaded surface reads as a blob, and neighbouring quads leave hairline
-            // seams where their antialiased edges meet, which the stroke covers.
-            g.strokePolyline(xs, ys, 5);
+
+            // Outlined as well as filled: the fill gives the solid, the wireframe gives the shape, and
+            // a smoothly shaded surface with no lines on it reads as a blob.
+            //
+            // Every kept line on this cell's own boundary, not just the two leading edges. Cells are
+            // painted far ones first, so a nearer neighbour's fill runs right up to — and over the
+            // antialiased edge of — a line its farther neighbour already drew. Each cell redrawing all
+            // four of its kept edges means whichever is painted last puts the line back.
+            if (cell.j % every == 0) {
+                g.strokeLine(xs[0], ys[0], xs[1], ys[1]);
+            }
+            if ((cell.j + 1) % every == 0 || cell.j + 1 == last) {
+                g.strokeLine(xs[3], ys[3], xs[2], ys[2]);
+            }
+            if (cell.i % every == 0) {
+                g.strokeLine(xs[0], ys[0], xs[3], ys[3]);
+            }
+            if ((cell.i + 1) % every == 0 || cell.i + 1 == last) {
+                g.strokeLine(xs[1], ys[1], xs[2], ys[2]);
+            }
         }
+    }
+
+    /**
+     * Draw a line on every {@code n}th one of a grid this size.
+     *
+     * <p>Shading wants a fine grid — the silhouette and the light are computed per cell, and coarse
+     * cells give a faceted edge and blocky lighting. A wireframe wants a coarse one: at 60 samples the
+     * default surface carries 60 lines each way, and on anything that oscillates they cross into
+     * moire and the picture reads as a hairball rather than as a shape. The two are separate
+     * resolutions and the fill is what makes separating them possible, since the solid no longer
+     * depends on the lines to exist.
+     *
+     * <p>Around twenty lines each way, which is roughly where every plotting package lands
+     * independently — gnuplot's {@code isosamples}, matplotlib's {@code rstride}.
+     */
+    static int wireframeStride(int steps) {
+        return Math.max(1, (int) Math.round((steps - 1) / (double) WIREFRAME_LINES));
     }
 
     /**
