@@ -245,6 +245,39 @@ class MachineTest {
     }
 
     @Test
+    void bindingsKeepTheOrderTheyWereMadeIn() {
+        // Through the machine, which is the path a real sheet is saved from — and the one the file
+        // round-trip test does not take, because it builds a Sheet directly.
+        Machine m = machine();
+        for (String name : List.of("n", "third", "alpha", "k")) {
+            m.apply(push("1"));
+            m.apply(new Op.Store(name));
+        }
+        assertEquals(
+                List.of("n", "third", "alpha", "k"),
+                List.copyOf(m.state().variables().keySet()));
+    }
+
+    @Test
+    void unstoreForgetsABindingAndUndoesLikeAnythingElse() {
+        Machine m = machine();
+        m.apply(push("42"));
+        m.apply(new Op.Store("n"));
+        m.apply(new Op.Unstore("n"));
+        assertFalse(m.state().variables().containsKey("n"));
+
+        assertTrue(m.undo());
+        assertEquals(Exprs.of(42), m.state().variables().get("n"));
+    }
+
+    @Test
+    void unstoringSomethingNeverBoundIsAnErrorRatherThanASilentSuccess() {
+        // The two are indistinguishable afterwards, and the one worth hearing about is the typo.
+        Machine m = machine();
+        assertThrows(MachineException.class, () -> m.apply(new Op.Unstore("nothing")));
+    }
+
+    @Test
     void evaluateResolvesStoredVariables() {
         Machine m = machine();
         m.applyAll(List.of(push("42"), new Op.Store("n")));

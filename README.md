@@ -359,6 +359,17 @@ Precision is read from the input line: type `20`, then `M-m p`. The input line i
 application's minibuffer, so that is the gesture Calc uses for a numeric prefix, and it
 needs no dialog.
 
+### Variables
+
+`M-s t` binds the top of the stack to the name on the input line and takes it, `M-s s` binds and
+leaves it, `M-s r` pushes what a name is bound to, `M-s u` forgets one, and `M-s l` lists the lot —
+typeset, at the size the stack is using, because a binding is a value.
+
+**A name resolves at `=` and nowhere else**, which is Calc's division rather than an accident of where
+the map was reachable. Binding something to `x` must not change what `deriv(x^2, x)` means, so storing
+never rewrites the stack; `C-x e` is where you ask for the substitution, and it is one pass, so a
+binding that mentions itself terminates instead of recursing.
+
 ### Sheets, tabs and files
 
 A sheet is a stack, a trail, the variables and the modes it was worked under. It saves as

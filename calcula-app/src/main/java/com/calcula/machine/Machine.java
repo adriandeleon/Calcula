@@ -175,6 +175,27 @@ public final class Machine {
                 Expr value = next.remove(next.size() - 1).value();
                 yield from.withEntries(next).withVariable(s.name(), value);
             }
+            case Op.Unstore u -> {
+                if (!from.variables().containsKey(u.name())) {
+                    throw new MachineException("nothing is bound to " + u.name());
+                }
+                yield from.withoutVariable(u.name());
+            }
+            case Op.Unpack ignored -> {
+                require(from, 1);
+                List<CalcState.Entry> next = from.mutableEntries();
+                Expr top = next.get(next.size() - 1).value();
+                if (!Exprs.isList(top)) {
+                    throw new MachineException("the top of the stack is not a list");
+                }
+                next.remove(next.size() - 1);
+                // Each element came from the list, which is the honest origin: it is where it was a
+                // moment ago and the only history this operation knows about.
+                for (Expr item : Exprs.items(top)) {
+                    next.add(CalcState.Entry.from(item, top));
+                }
+                yield from.withEntries(next);
+            }
             case Op.Recall r -> {
                 Expr value = from.variables().get(r.name());
                 // An unbound name is not an error: pushing the bare symbol is what lets you build an
