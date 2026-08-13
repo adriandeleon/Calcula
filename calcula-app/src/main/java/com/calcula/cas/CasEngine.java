@@ -50,6 +50,20 @@ public interface CasEngine extends AutoCloseable {
     /** Render as presentation MathML. */
     String mathmlForm(Expr input) throws CasException;
 
+    /**
+     * Give up on whatever is running, if this engine can.
+     *
+     * <p>Called from another thread than the one blocked in {@link #eval}, and deliberately not
+     * required: an engine that cannot be interrupted says so by doing nothing, and the caller is no
+     * worse off than before.
+     *
+     * <p>"Give up" rather than "stop". A CAS evaluating a hard problem is inside code that does not
+     * check whether anyone still wants the answer — measured against Symja, neither a thread
+     * interrupt nor its own stop flag nor its own time constraint ends a running factorisation — so
+     * the honest contract is that the CALLER stops waiting, not that the computation stops.
+     */
+    default void cancel() {}
+
     @Override
     default void close() {}
 }

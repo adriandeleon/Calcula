@@ -451,6 +451,26 @@ A ratio never reaches the engine — `BigDecimal` divides it here. The CAS is a 
 a precondition, so a window with no engine still adds up fractions, and it should still be able to
 say how big the answer is.
 
+### Giving up on a computation
+
+`C-g` already meant "abandon what I am in the middle of" for a half-entered chord. It now means the
+same for a computation, which was the one thing in the window there was no way out of.
+
+**It gives up rather than stops, and the distinction is not pedantry.** Nothing ends a running Symja
+computation from outside — measured on `FactorInteger(2^128 + 1)`, a thread interrupt leaves it
+running after 5 s, `EvalEngine.setStopRequested(true)` after 8 s (set on the evaluating thread's own
+engine, since `EvalEngine` is thread-local and the caller's is a different object), and so does
+`setTimeConstrainedMillis`. Symja polls those in its evaluation loop and not inside a CPU-bound
+primitive.
+
+So the engine evaluates on a thread of its own and the caller stops waiting. The abandoned
+computation keeps a core busy until it finishes, and the message says so. Its evaluator is replaced
+along with it: an evaluation nobody is waiting for still holds Symja state, and sharing that with the
+next one is a data race with no upper bound on when it bites.
+
+`CasEngine.cancel()` is a default no-op, so an engine that cannot be interrupted says so by doing
+nothing.
+
 ### Still open
 
 **Which input model is the default.** Deliberately undecided. Both readers work,
@@ -459,18 +479,6 @@ say how big the answer is.
 
 ### Not built yet
 
-- **Stopping a running computation.** `C-g` cannot cancel one, and this is an engine limit rather
-  than a missing wire. Measured against symja on `FactorInteger(2^128 + 1)`: `Thread.interrupt()`
-  leaves it running after 5 s, `EvalEngine.setStopRequested(true)` after 8 s — set on the evaluating
-  thread's OWN engine, since `EvalEngine` is thread-local and the caller's is a different object —
-  and so does `setTimeConstrainedMillis(2000)`. Symja polls those in its evaluation loop, not inside
-  a CPU-bound primitive. The worker cannot simply be replaced either: `Machine` is not thread-safe
-  and an abandoned computation keeps mutating it. The one safe shape is to abandon *inside* the
-  engine seam — run symja on a helper thread, give up waiting, throw `CasException`, and rebuild the
-  `ExprEvaluator` afterwards — which leaks the stuck thread and is a decision rather than a fix.
-- **Rendering a factorisation as a product.** `FactorInteger` returns `[[3, 1], [5, 1], …]`, which is
-  genuinely indistinguishable from a 2×2 integer matrix by shape alone. A solution set was fixable
-  because a rule is never an element of a matrix; this one needs to know what produced the value.
 - Release CI: a matrix building one installer per target. The build itself is done and
   runs on any of them; nothing automates it yet, and only macOS has been built for real.
 - Notarization, so a downloaded DMG opens without a Gatekeeper warning. The app is
