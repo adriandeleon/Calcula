@@ -96,15 +96,46 @@ class RowMarkerTest {
 
     @Test
     void aRowIsSpokenAsItsPositionAndItsValue() {
-        String said = RowMarker.spoken(3, Exprs.call("Plus", Exprs.sym("x"), Exprs.of(1)));
+        String said = RowMarker.spoken(3, Exprs.call("Plus", Exprs.sym("x"), Exprs.of(1)), null);
         assertTrue(said.startsWith("3: "), "the level is the first thing a reader needs");
         assertTrue(said.contains("x"), "and then the value itself");
     }
 
     @Test
     void aMarkedRowAlsoSpeaksItsReason() {
-        String said = RowMarker.spoken(1, held("Fibonacci", Exprs.of(100)));
+        String said = RowMarker.spoken(1, held("Fibonacci", Exprs.of(100)), null);
         assertTrue(said.contains("Fibonacci"));
         assertFalse(said.contains("\n"), "a screen reader wants one line, not a paragraph");
+    }
+
+    // ---- where it came from ----------------------------------------------------------------
+
+    @Test
+    void aValueThatIsItsOwnOriginSaysNothing() {
+        Expr fortyTwo = Exprs.of(42);
+        assertNull(RowMarker.origin(fortyTwo, fortyTwo), "\"from: 42\" beside 42 is noise");
+    }
+
+    @Test
+    void aValueWithNoKnownOriginSaysNothing() {
+        assertNull(RowMarker.origin(Exprs.of(42), null), "a sheet loaded from a file knows nothing");
+    }
+
+    /** The case the whole thing is for: the value and what produced it look nothing alike. */
+    @Test
+    void aValueWorkedOutFromSomethingElseSaysWhat() {
+        Expr result = Exprs.list(Exprs.of(3), Exprs.of(5));
+        Expr asked = Exprs.call("FactorInteger", Exprs.of(15));
+        String said = RowMarker.origin(result, asked);
+        assertNotNull(said);
+        assertTrue(said.contains("FactorInteger"), said);
+    }
+
+    @Test
+    void aSpokenRowMentionsWhereItCameFrom() {
+        String said =
+                RowMarker.spoken(1, Exprs.list(Exprs.of(3), Exprs.of(5)), Exprs.call("FactorInteger", Exprs.of(15)));
+        assertTrue(said.startsWith("1: "));
+        assertTrue(said.contains("FactorInteger"), said);
     }
 }

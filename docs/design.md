@@ -97,6 +97,32 @@ value approximate, and nothing else does.
 
 The same amber marks a half-entered chord, because `C-x-` is likewise a value that has not settled.
 
+### Where a value came from
+
+The stack shows what you have; it never showed how you got it. A list of seven pairs is the answer to
+`FactorInteger(2^64 - 1)` and is indistinguishable, sitting there, from a matrix somebody typed.
+
+So a stack entry is a value **and its origin** — the expression it was worked out from, before
+evaluation. Enter `1/3 + 1/6` and the value is `1/2` while the origin is the sum. Rows say it in a
+tooltip and to a screen reader, and say nothing at all when the origin is the value itself, which is
+most of the time: `42` produces `42`, and "from: 42" on every row would be a window full of tooltips
+saying nothing.
+
+The pair is held in **one list, not two**. Every operation the machine performs is list surgery —
+remove the top two, swap them, rotate a group, clear a range — and surgery on pairs carries the origin
+along without a line of code that knows it exists. Two parallel lists would be the same twelve
+operations written twice, and the day they disagree is the day a value wears somebody else's history,
+which reads as data rather than as a bug.
+
+It lives in `CalcState` rather than beside it in the window, so undo restores it for free — a snapshot
+is the whole state, and history that had to be re-derived after an undo is history that would
+eventually be wrong.
+
+It is **session-only**. The `.calc` format saves the mathematics, and where a value came from is not
+part of the mathematics; a loaded sheet answers with silence, which is true — it came from a file.
+The alternative is a second thing on every `stack` line, and the format rests on Formatter and Parser
+being inverses.
+
 ### The other margin
 
 The rail says *whether* a value is exact. The right-hand margin says **how big it is**: `5/6` with

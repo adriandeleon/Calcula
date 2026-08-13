@@ -125,59 +125,68 @@ public final class Machine {
 
     private CalcState computeFrom(CalcState from, Op op) {
         return switch (op) {
-            case Op.Push p -> from.withStack(append(from, evaluate(p.value(), from.modes())));
+            // The origin is what was ASKED, before evaluation: type 1/3 + 1/6 and the value is 1/2
+            // while the origin is the sum. That is the pair every permutation below then carries
+            // without knowing it is doing so.
+            case Op.Push p ->
+                from.withEntries(append(from, CalcState.Entry.from(evaluate(p.value(), from.modes()), p.value())));
             case Op.Drop d -> {
-                List<Expr> next = from.mutableStack();
+                List<CalcState.Entry> next = from.mutableEntries();
                 require(from, d.count());
                 next.subList(next.size() - d.count(), next.size()).clear();
-                yield from.withStack(next);
+                yield from.withEntries(next);
             }
             case Op.Dup d -> {
-                List<Expr> next = from.mutableStack();
-                next.addAll(from.top(d.count()));
-                yield from.withStack(next);
+                List<CalcState.Entry> next = from.mutableEntries();
+                next.addAll(from.topEntries(d.count()));
+                yield from.withEntries(next);
             }
             case Op.Swap ignored -> {
                 require(from, 2);
-                List<Expr> next = from.mutableStack();
+                List<CalcState.Entry> next = from.mutableEntries();
                 Collections.swap(next, next.size() - 1, next.size() - 2);
-                yield from.withStack(next);
+                yield from.withEntries(next);
             }
             case Op.Roll r -> {
                 int depth = Math.abs(r.depth());
                 require(from, depth);
-                List<Expr> next = from.mutableStack();
-                List<Expr> group = next.subList(next.size() - depth, next.size());
+                List<CalcState.Entry> next = from.mutableEntries();
+                List<CalcState.Entry> group = next.subList(next.size() - depth, next.size());
                 // A positive depth moves the top value down to the bottom of the group.
                 Collections.rotate(group, r.depth() > 0 ? 1 : -1);
-                yield from.withStack(next);
+                yield from.withEntries(next);
             }
-            case Op.Clear ignored -> from.withStack(List.of());
+            case Op.Clear ignored -> from.withEntries(List.of());
             case Op.Apply a -> {
                 require(from, a.arity());
-                List<Expr> next = from.mutableStack();
-                List<Expr> args = new ArrayList<>(next.subList(next.size() - a.arity(), next.size()));
+                List<CalcState.Entry> next = from.mutableEntries();
+                List<Expr> args = next.subList(next.size() - a.arity(), next.size()).stream()
+                        .map(CalcState.Entry::value)
+                        .toList();
+                Expr call = Exprs.call(a.head(), args);
                 next.subList(next.size() - a.arity(), next.size()).clear();
-                next.add(evaluate(Exprs.call(a.head(), args), from.modes()));
-                yield from.withStack(next);
+                // The call built from the operands is exactly what this result was worked out from.
+                next.add(CalcState.Entry.from(evaluate(call, from.modes()), call));
+                yield from.withEntries(next);
             }
             case Op.Store s -> {
                 require(from, 1);
-                List<Expr> next = from.mutableStack();
-                Expr value = next.remove(next.size() - 1);
-                yield from.withStack(next).withVariable(s.name(), value);
+                List<CalcState.Entry> next = from.mutableEntries();
+                Expr value = next.remove(next.size() - 1).value();
+                yield from.withEntries(next).withVariable(s.name(), value);
             }
             case Op.Recall r -> {
                 Expr value = from.variables().get(r.name());
                 // An unbound name is not an error: pushing the bare symbol is what lets you build an
                 // expression in terms of something you have not defined yet.
-                yield from.withStack(append(from, value == null ? Exprs.sym(r.name()) : value));
+                Expr name = Exprs.sym(r.name());
+                yield from.withEntries(append(from, CalcState.Entry.from(value == null ? name : value, name)));
             }
             case Op.ReplaceAt r -> {
                 require(from, r.position());
-                List<Expr> next = from.mutableStack();
-                next.set(next.size() - r.position(), r.value());
-                yield from.withStack(next);
+                List<CalcState.Entry> next = from.mutableEntries();
+                next.set(next.size() - r.position(), CalcState.Entry.from(r.value(), r.value()));
+                yield from.withEntries(next);
             }
             case Op.SetModes m -> {
                 // Same modes is not an operation: it would push an undo entry that changes nothing,
@@ -186,9 +195,12 @@ public final class Machine {
             }
             case Op.Evaluate ignored -> {
                 require(from, 1);
-                List<Expr> next = from.mutableStack();
-                next.set(next.size() - 1, evaluate(next.get(next.size() - 1), from.modes()));
-                yield from.withStack(next);
+                List<CalcState.Entry> next = from.mutableEntries();
+                // What it was before is what it came from, which is the honest answer for a value
+                // that has just been worked out further.
+                Expr was = next.get(next.size() - 1).value();
+                next.set(next.size() - 1, CalcState.Entry.from(evaluate(was, from.modes()), was));
+                yield from.withEntries(next);
             }
         };
     }
@@ -205,9 +217,9 @@ public final class Machine {
         }
     }
 
-    private static List<Expr> append(CalcState from, Expr value) {
-        List<Expr> next = from.mutableStack();
-        next.add(value);
+    private static List<CalcState.Entry> append(CalcState from, CalcState.Entry entry) {
+        List<CalcState.Entry> next = from.mutableEntries();
+        next.add(entry);
         return next;
     }
 
