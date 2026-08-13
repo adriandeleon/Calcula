@@ -212,11 +212,16 @@ public final class Functions {
         // and money paid is negative, as in every spreadsheet.
         // Every one of these depends on the word size, which is a mode: M-m w. Without a width, "not"
         // has no answer.
-        // Not a function but a shape, listed because there is nowhere else somebody would find it.
+        // One row, not two. An operator is not a name, and everyFriendlyNameInTheTableIsOneThe
+        // ParserActuallyTranslates is right to refuse one: a row here goes onto the input line when
+        // it is clicked, so a row that is not callable hands the user something that fails. The
+        // spelling lives in the summary, which is where somebody looking for it will read it.
         group(
                 "Measurements",
-                doc("+/-", "value +/- error", "A measurement and how far out it might be"),
-                doc("PlusMinus", "PlusMinus(value, error)", "The same thing written as a call"));
+                doc(
+                        "PlusMinus",
+                        "PlusMinus(value, error)",
+                        "A measurement and how far out it might be — usually typed value +/- error"));
 
         group(
                 "Bits",
