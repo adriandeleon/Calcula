@@ -3,8 +3,11 @@ package com.calcula.ui;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -166,6 +169,52 @@ public final class CalcWindow {
 
     /** Transient interface feedback. See {@link #flash}. */
     private final Label echoNote = new Label();
+
+    /**
+     * Decimals already worked out, by the value they belong to.
+     *
+     * <p>Keyed on the Expr because that is what the answer is <em>of</em> — the same ratio appearing
+     * twice on the stack is the same decimal, and a cell being recycled past it must not ask again.
+     * Bounded, because a long session is a long stack.
+     */
+    private final Map<Expr, String> approximations = new LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Expr, String> eldest) {
+            return size() > MAX_APPROXIMATIONS;
+        }
+    };
+
+    /** Values already sent to the engine, so a redraw does not queue the same question again. */
+    private final Set<Expr> approximationsAsked = new HashSet<>();
+
+    private static final int MAX_APPROXIMATIONS = 512;
+
+    /**
+     * Off the worker, because this is the window's curiosity rather than the user's instruction.
+     *
+     * <p>A queued approximation must never delay something that was actually asked for. The engine
+     * serialises internally, so the two threads take turns rather than collide.
+     */
+    private final ExecutorService approximator = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "calc-approx");
+        t.setDaemon(true);
+        return t;
+    });
+
+    /** The trail column, held so it can be taken out of the split and put back. */
+    private VBox trailPane;
+
+    /** The split the trail and the stack share, held so its divider can be set and remembered. */
+    private SplitPane split;
+
+    /**
+     * Suppresses the divider listener while the divider is being set in code.
+     *
+     * <p>Applying a remembered position moves the divider, which fires the same listener that saves
+     * it — so without this, restoring a layout writes it straight back, and worse, the value written
+     * is whatever the divider settled at before layout rather than what was asked for.
+     */
+    private boolean settingDivider;
 
     /** The typeset reading of the line being typed. See {@link #buildPreview}. */
     private final HBox previewHost = new HBox();
@@ -370,18 +419,25 @@ public final class CalcWindow {
         tabs = new SheetTabs(this::selectSheet, this::closeSheet, this::newSheet);
         renderTabs();
 
-        VBox trailPane = new VBox(buildTrailBar(), trailView);
+        trailPane = new VBox(buildTrailBar(), trailView);
         VBox.setVgrow(trailView, Priority.ALWAYS);
-        SplitPane split = new SplitPane(trailPane, stackView);
-        split.setDividerPositions(0.28);
+        split = new SplitPane(trailPane, stackView);
         SplitPane.setResizableWithParent(trailPane, Boolean.FALSE);
+        applyTrailLayout();
 
         // The strip sits above both panes rather than over the stack alone: a sheet is the trail and
         // the stack together, so a tab that spanned only half of it would be saying something false.
         VBox centre = new VBox(tabs.node(), split);
         VBox.setVgrow(split, Priority.ALWAYS);
         root.setCenter(centre);
-        root.setBottom(new VBox(buildModeLine(), buildPreview(), buildEchoArea()));
+        // Preview, then the line it is a reading of, then the status strip at the frame edge.
+        //
+        // The mode line used to sit BETWEEN the stack and the input, which is where Emacs puts it —
+        // a window's mode line with the echo area below it at the bottom of the frame. Faithful, and
+        // it separated the one pair of regions that form a single conversation: entry 1: and the line
+        // being typed into it. Everything else in the window puts status at the edge, and so does
+        // every editor anyone comes here from.
+        root.setBottom(new VBox(buildPreview(), buildEchoArea(), buildModeLine()));
         root.getStyleClass().add("calc-root");
 
         input.addEventFilter(KeyEvent.KEY_PRESSED, this::onKey);
@@ -518,6 +574,7 @@ public final class CalcWindow {
             settingsStore.save(settings);
         }
         worker.shutdownNow();
+        approximator.shutdownNow();
         engine.close();
     }
 
@@ -530,6 +587,12 @@ public final class CalcWindow {
         registry.register("stack.swap", "Swap", "Exchange the top two values", () -> machineOp(new Op.Swap()));
         registry.register("stack.roll", "Roll", "Rotate the top three values", () -> machineOp(new Op.Roll(3)));
         registry.register("stack.clear", "Clear", "Empty the stack", () -> machineOp(new Op.Clear()));
+        registry.register("view.trail", "Trail", "Show or hide the trail column", this::toggleTrail);
+        registry.register(
+                "view.approximations",
+                "Approximations",
+                "Show or hide the decimal beside an exact value",
+                this::toggleApproximations);
         registry.register(
                 "stack.evaluate", "Evaluate", "Re-evaluate the top value", () -> machineOp(new Op.Evaluate()));
         registry.register(
@@ -1010,6 +1073,7 @@ public final class CalcWindow {
         keymap.bind("C-x k", "stack.clear");
         keymap.bind("C-x e", "stack.evaluate");
         keymap.bind("C-x d", "stack.dup");
+        keymap.bind("C-x 1", "view.trail");
         keymap.bind("M-i", "input.toggleModel");
         keymap.bind("M-p", "plot.function");
         // Both spellings: Chords emits Cmd- on macOS and C- elsewhere.
@@ -1601,6 +1665,20 @@ public final class CalcWindow {
 
                 HBox formula = new HBox(10, index, content);
                 formula.setAlignment(picture ? Pos.TOP_LEFT : Pos.BASELINE_LEFT);
+
+                // The decimal, out at the right-hand edge. The margin was empty -- measured, about
+                // half the column -- and this is metadata about the value, which is the same argument
+                // that puts the exactness rail in the gutter: it goes beside the value, never inside
+                // it. Most rows have nothing to put here and stay exactly as they were.
+                String decimal = approximationFor(value);
+                if (decimal != null) {
+                    Region gap = new Region();
+                    HBox.setHgrow(gap, Priority.ALWAYS);
+                    Label shown = new Label(decimal);
+                    shown.getStyleClass().add("stack-approximation");
+                    shown.setMinWidth(Region.USE_PREF_SIZE);
+                    formula.getChildren().addAll(gap, shown);
+                }
                 HBox.setHgrow(formula, Priority.ALWAYS);
 
                 HBox row = new HBox(GUTTER_GAP, gutter, formula);
@@ -2063,6 +2141,17 @@ public final class CalcWindow {
     }
 
     /** Hold the new preferences now, write them when the presses stop. */
+    /**
+     * Save at once.
+     *
+     * <p>{@link #saveLater} is right for a value being nudged repeatedly; a layout toggle is one
+     * decision, and debouncing it means quitting straight afterwards throws it away.
+     */
+    private void saveNow(Settings updated) {
+        settings = updated;
+        settingsStore.save(settings);
+    }
+
     private void saveLater(Settings updated) {
         settings = updated;
         sizeSave.setOnFinished(e -> settingsStore.save(settings));
@@ -2542,6 +2631,124 @@ public final class CalcWindow {
      *
      * <p>Hidden and unmanaged when there is nothing to say, so a blank line costs no height.
      */
+    /**
+     * Put the trail where it was left.
+     *
+     * <p>A closed trail is removed from the split rather than driven to a zero-width divider: a
+     * divider at zero is still there to be grabbed, and a column of pure border is a worse answer than
+     * no column.
+     *
+     * <p>The position is set in a {@code runLater} because a SplitPane settles a divider on a layout
+     * pass — set before one, the value is quietly replaced by whatever the panes' preferred widths
+     * work out to, which is how a remembered 0.45 comes back as 0.28.
+     */
+    private void applyTrailLayout() {
+        settingDivider = true;
+        if (settings.trailShown()) {
+            if (!split.getItems().contains(trailPane)) {
+                split.getItems().setAll(trailPane, stackView);
+            }
+            Platform.runLater(() -> {
+                split.setDividerPositions(settings.trailSplit());
+                settingDivider = false;
+                watchDivider();
+            });
+        } else {
+            split.getItems().setAll(stackView);
+            settingDivider = false;
+        }
+    }
+
+    /** Remember where the divider is dragged to, on the same debounce the sizes use. */
+    private void watchDivider() {
+        if (split.getDividers().isEmpty() || dividerWatched) {
+            return;
+        }
+        dividerWatched = true;
+        split.getDividers().get(0).positionProperty().addListener((o, was, now) -> {
+            if (!settingDivider && settings.trailShown()) {
+                saveLater(settings.withTrailSplit(now.doubleValue()));
+            }
+        });
+    }
+
+    private boolean dividerWatched;
+
+    /**
+     * Show or hide the trail.
+     *
+     * <p>{@code C-x 1} because that is the gesture someone reaches for the moment the mathematics gets
+     * tall, in an application shaped like Emacs — and because a window whose proportions are a
+     * constant fits one kind of work.
+     */
+    private void toggleApproximations() {
+        boolean showing = !settings.showApproximations();
+        saveNow(settings.withApproximations(showing));
+        stackView.refresh();
+        flash(showing ? "approximations shown" : "approximations hidden");
+    }
+
+    private void toggleTrail() {
+        boolean showing = !settings.trailShown();
+        saveNow(settings.withTrailShown(showing));
+        dividerWatched = false;
+        applyTrailLayout();
+        flash(showing ? "trail shown" : "trail hidden");
+    }
+
+    /**
+     * The decimal for a value, if there is one to hand.
+     *
+     * <p>Answers immediately or not at all. A ratio is worked out here and now — no engine, which
+     * matters because exact arithmetic works without one and so should knowing how big the answer is.
+     * Anything else is asked of the engine in the background, and the row is left plain until the
+     * answer arrives and brings a refresh with it.
+     */
+    private String approximationFor(Expr value) {
+        if (!settings.showApproximations() || !Approximation.worth(value)) {
+            return null;
+        }
+        String direct = Approximation.direct(value, shownModes.precision());
+        if (direct != null) {
+            return direct;
+        }
+        String known = approximations.get(value);
+        if (known != null) {
+            return known.isEmpty() ? null : known;
+        }
+        askForApproximation(value);
+        return null;
+    }
+
+    private void askForApproximation(Expr value) {
+        if (!approximationsAsked.add(value)) {
+            return;
+        }
+        Expr question = Approximation.request(value, shownModes.precision());
+        if (question == null) {
+            return;
+        }
+        CasEngine asked = engine;
+        approximator.execute(() -> {
+            String answer;
+            try {
+                // Empty rather than null for "asked and there is nothing to show", so the cache
+                // remembers the refusal and the question is not put again on every redraw.
+                String shown = Approximation.shown(asked.eval(question));
+                answer = shown == null ? "" : shown;
+            } catch (Exception e) {
+                answer = "";
+            }
+            String settled = answer;
+            Platform.runLater(() -> {
+                approximations.put(value, settled);
+                if (!settled.isEmpty()) {
+                    stackView.refresh();
+                }
+            });
+        });
+    }
+
     private Region buildPreview() {
         previewHost.getStyleClass().add("input-preview");
         previewHost.setAlignment(Pos.CENTER_LEFT);

@@ -75,8 +75,13 @@ public final class SettingsStore {
                 modes,
                 readDouble(props, "mathSize", d.mathSize()),
                 // Absent in a schema-1 file, which is the whole migration: an added scalar reads as
-                // its default, so there is nothing to convert.
-                readDouble(props, "trailSize", d.trailSize()));
+                // its default, so there is nothing to convert. The same holds for the two layout keys
+                // added in schema 3 — a file written before them opens the trail at its usual width,
+                // which is exactly what it did when there was nothing to read.
+                readDouble(props, "trailSize", d.trailSize()),
+                readDouble(props, "trailSplit", d.trailSplit()),
+                readBool(props, "trailShown", d.trailShown()),
+                readBool(props, "showApproximations", d.showApproximations()));
     }
 
     /**
@@ -96,6 +101,9 @@ public final class SettingsStore {
         props.setProperty("modes.fractions", Boolean.toString(settings.modes().fractions()));
         props.setProperty("mathSize", Double.toString(settings.mathSize()));
         props.setProperty("trailSize", Double.toString(settings.trailSize()));
+        props.setProperty("trailSplit", Double.toString(settings.trailSplit()));
+        props.setProperty("trailShown", Boolean.toString(settings.trailShown()));
+        props.setProperty("showApproximations", Boolean.toString(settings.showApproximations()));
         try {
             Files.createDirectories(file.getParent());
             Path temp = file.resolveSibling(FILE_NAME + ".tmp");

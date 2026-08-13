@@ -3,8 +3,10 @@
 A keyboard-driven symbolic calculator in the spirit of Emacs Calc. JDK 25 + JavaFX 26, Maven, modular
 (JPMS, module `com.calcula`).
 
-The stack is a document, not a display: trail, stack, mode line, echo area — plus a strip above the
-input that sets the line as mathematics while it is being typed. Input is keystrokes with
+The stack is a document, not a display: trail, stack, echo area, mode line — plus a strip above the
+input that sets the line as mathematics while it is being typed. The status strip sits at the bottom
+edge rather than above the input, so the top of the stack and the line being typed into it are
+adjacent. Input is keystrokes with
 prefix dispatch; the only buttons are four labelled toolbar entries, and each names its own chord in
 its tooltip.
 
@@ -381,6 +383,36 @@ there is only one, because a row of chrome that always reads "Untitled" is chrom
 own sake. New always opens a tab and so destroys nothing; Open loads into the current
 sheet when it is untouched and into a new one otherwise; quitting asks about every sheet
 with unsaved work, not just the visible one.
+
+### The window remembers how it was left
+
+The divider was set once at construction and written down nowhere, so dragging it and restarting put
+it back at 0.28 — and there was no way to close the trail at all, in an application otherwise shaped
+like Emacs, where `C-x 1` is the gesture someone reaches for the moment the mathematics gets tall.
+
+`view.trail` (`C-x 1`) closes and reopens it; the width and the open/closed state are separate keys,
+because closing something should not forget the size it had. A closed trail leaves the split
+entirely rather than being driven to a zero-width divider — a divider at zero is still there to be
+grabbed, and a column of pure border is a worse answer than no column.
+
+Schema 3, and the migration is that there is nothing to migrate: an added scalar reads as its
+default, so a file from the previous build opens the trail at its usual width. A test writes a
+schema-2 file by hand and says so.
+
+### How big is it
+
+An exact answer is the right answer and not always the useful one. Every stack row whose value has a
+decimal shows it in the right margin — `5/6` beside `≈ 0.833333333333` — with `view.approximations`
+to turn the column off.
+
+Most rows show nothing. An integer is its own decimal, a value already carrying float error wears the
+amber rail instead, and anything with a free symbol has none: `N(x + 1)` is `1 + x`, a round trip
+spent to learn nothing. The structural check runs first, so the engine is only ever asked about a
+closed form.
+
+A ratio never reaches the engine — `BigDecimal` divides it here. The CAS is a capability rather than
+a precondition, so a window with no engine still adds up fractions, and it should still be able to
+say how big the answer is.
 
 ### Still open
 

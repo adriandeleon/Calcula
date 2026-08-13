@@ -21,13 +21,21 @@ import com.calcula.machine.Modes;
  * @param trailSize point size for the trail, sized separately because it is a log rather than the
  *     working surface — people keep it small to see more of it, or large to actually read it
  */
-public record Settings(String themeId, String inputModel, Modes modes, double mathSize, double trailSize) {
+public record Settings(
+        String themeId,
+        String inputModel,
+        Modes modes,
+        double mathSize,
+        double trailSize,
+        double trailSplit,
+        boolean trailShown,
+        boolean showApproximations) {
 
     /**
      * Bumped whenever the shape changes, so an older build never silently reinterprets a newer file.
      * A file claiming a higher version is set aside rather than parsed — see {@link SettingsStore}.
      */
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 4;
 
     public static final String ALGEBRAIC = "algebraic";
     public static final String RPN = "rpn";
@@ -39,13 +47,28 @@ public record Settings(String themeId, String inputModel, Modes modes, double ma
     public static final double MAX_TRAIL_SIZE = 32;
 
     /**
+     * How much of the window the trail may take.
+     *
+     * <p>Bounded at both ends rather than left free. All the way open there is no stack left to read,
+     * and a sliver is a column that costs its own width in border and shows nothing — if someone wants
+     * the trail gone, the answer is to close it, which is a different state and is remembered as one.
+     */
+    public static final double MIN_TRAIL_SPLIT = 0.1;
+
+    public static final double MAX_TRAIL_SPLIT = 0.6;
+
+    /** Wide enough for a typical result line without taking the window over. */
+    public static final double DEFAULT_TRAIL_SPLIT = 0.28;
+
+    /**
      * Algebraic entry, because it is the gentler of the two to meet first.
      *
      * <p>This is where the question of which model is the default finally gets answered — as a
      * preference rather than a hardcoded choice, which is the honest resolution: the two readers are
      * equally supported, and which one someone wants is not something the program can know.
      */
-    public static final Settings DEFAULTS = new Settings("slab", ALGEBRAIC, Modes.DEFAULTS, 17, 11);
+    public static final Settings DEFAULTS =
+            new Settings("slab", ALGEBRAIC, Modes.DEFAULTS, 17, 11, DEFAULT_TRAIL_SPLIT, true, true);
 
     public Settings {
         themeId = themeId == null || themeId.isBlank() ? DEFAULTS_THEME : themeId.trim();
@@ -55,6 +78,7 @@ public record Settings(String themeId, String inputModel, Modes modes, double ma
         // and a 500-point stack entry is indistinguishable from a broken window.
         mathSize = Math.clamp(mathSize, MIN_MATH_SIZE, MAX_MATH_SIZE);
         trailSize = Math.clamp(trailSize, MIN_TRAIL_SIZE, MAX_TRAIL_SIZE);
+        trailSplit = Math.clamp(trailSplit, MIN_TRAIL_SPLIT, MAX_TRAIL_SPLIT);
     }
 
     private static final String DEFAULTS_THEME = "slab";
@@ -64,22 +88,48 @@ public record Settings(String themeId, String inputModel, Modes modes, double ma
     }
 
     public Settings withTheme(String id) {
-        return new Settings(id, inputModel, modes, mathSize, trailSize);
+        return new Settings(id, inputModel, modes, mathSize, trailSize, trailSplit, trailShown, showApproximations);
     }
 
     public Settings withInputModel(String model) {
-        return new Settings(themeId, model, modes, mathSize, trailSize);
+        return new Settings(themeId, model, modes, mathSize, trailSize, trailSplit, trailShown, showApproximations);
     }
 
     public Settings withModes(Modes newModes) {
-        return new Settings(themeId, inputModel, newModes, mathSize, trailSize);
+        return new Settings(
+                themeId, inputModel, newModes, mathSize, trailSize, trailSplit, trailShown, showApproximations);
     }
 
     public Settings withMathSize(double size) {
-        return new Settings(themeId, inputModel, modes, size, trailSize);
+        return new Settings(themeId, inputModel, modes, size, trailSize, trailSplit, trailShown, showApproximations);
+    }
+
+    /**
+     * Where the divider sits when the trail is open.
+     *
+     * <p>Kept separately from {@link #trailShown} so closing the trail does not forget the width it
+     * had. Reopening it to a default the user had already moved away from is a small forgetting that
+     * happens every session.
+     */
+    public Settings withTrailSplit(double fraction) {
+        return new Settings(themeId, inputModel, modes, mathSize, trailSize, fraction, trailShown, showApproximations);
+    }
+
+    public Settings withTrailShown(boolean shown) {
+        return new Settings(themeId, inputModel, modes, mathSize, trailSize, trailSplit, shown, showApproximations);
+    }
+
+    /**
+     * Whether an exact value also shows its decimal.
+     *
+     * <p>On by default. It is quiet — most values do not qualify, so most rows show nothing — and the
+     * question it answers, "yes, but how big is it", is the one a calculator is usually being asked.
+     */
+    public Settings withApproximations(boolean shown) {
+        return new Settings(themeId, inputModel, modes, mathSize, trailSize, trailSplit, trailShown, shown);
     }
 
     public Settings withTrailSize(double size) {
-        return new Settings(themeId, inputModel, modes, mathSize, size);
+        return new Settings(themeId, inputModel, modes, mathSize, size, trailSplit, trailShown, showApproximations);
     }
 }
