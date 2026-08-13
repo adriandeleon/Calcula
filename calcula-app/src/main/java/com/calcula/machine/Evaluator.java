@@ -56,7 +56,16 @@ public interface Evaluator {
      */
     static Evaluator numericThen(Evaluator engine) {
         return (input, modes) -> {
+            // The two levels that stop early, and they stop for different reasons: NONE because the
+            // shape is the point and the engine keeps rearranging it, NUMERIC because arithmetic is
+            // all that was wanted and it is exact and instant.
+            if (modes.simplification() == Simplification.NONE) {
+                return input;
+            }
             Expr folded = NUMERIC.evaluate(input, modes);
+            if (modes.simplification() == Simplification.NUMERIC) {
+                return asFractionMode(folded, modes);
+            }
             if (folded instanceof Num) {
                 return asFractionMode(folded, modes);
             }
@@ -64,8 +73,32 @@ public interface Evaluator {
             if (!modes.symbolic()) {
                 result = numericise(result, engine, modes);
             }
+            result = simplified(result, engine, modes);
             return asFractionMode(result, modes);
         };
+    }
+
+    /**
+     * Work the answer harder, when the level asks for it.
+     *
+     * <p>Best-effort in both directions: an engine that cannot simplify something returns it
+     * unchanged, and one that is not there at all returns the call unevaluated, which is detected and
+     * discarded. A simplification level must never be able to leave {@code Simplify(x)} on the stack
+     * as though it were an answer.
+     */
+    private static Expr simplified(Expr result, Evaluator engine, Modes modes) {
+        String head =
+                switch (modes.simplification()) {
+                    case ALGEBRAIC -> "Simplify";
+                    case EXTENDED -> "FullSimplify";
+                    default -> null;
+                };
+        if (head == null) {
+            return result;
+        }
+        Expr asked = Exprs.call(head, result);
+        Expr answer = engine.evaluate(asked, modes);
+        return answer == null || answer.equals(asked) ? result : answer;
     }
 
     /**

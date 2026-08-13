@@ -13,6 +13,7 @@ import java.util.logging.Logger;
 
 import com.calcula.machine.FloatFormat;
 import com.calcula.machine.Modes;
+import com.calcula.machine.Simplification;
 
 /**
  * Reads and writes {@code settings.properties} in the config directory.
@@ -72,7 +73,8 @@ public final class SettingsStore {
                 readBool(props, "modes.fractions", d.modes().fractions()),
                 readFloatFormat(props, d.modes().floats()),
                 readInt(props, "modes.wordSize", d.modes().wordSize()),
-                readInt(props, "modes.radix", d.modes().radix()));
+                readInt(props, "modes.radix", d.modes().radix()),
+                readSimplification(props, d.modes().simplification()));
         return new Settings(
                 props.getProperty("theme", d.themeId()),
                 props.getProperty("inputModel", d.inputModel()),
@@ -113,6 +115,8 @@ public final class SettingsStore {
                 "modes.floatDigits", Integer.toString(settings.modes().floats().digits()));
         props.setProperty("modes.wordSize", Integer.toString(settings.modes().wordSize()));
         props.setProperty("modes.radix", Integer.toString(settings.modes().radix()));
+        props.setProperty(
+                "modes.simplification", settings.modes().simplification().id());
         props.setProperty("mathSize", Double.toString(settings.mathSize()));
         props.setProperty("trailSize", Double.toString(settings.trailSize()));
         props.setProperty("trailSplit", Double.toString(settings.trailSplit()));
@@ -154,6 +158,13 @@ public final class SettingsStore {
      * never heard of should open in the default and keep the digit count, rather than refuse or
      * reset both.
      */
+    /** The level, or the default when a file names one this build has never heard of. */
+    private static Simplification readSimplification(Properties props, Simplification fallback) {
+        String raw = props.getProperty("modes.simplification");
+        Simplification level = raw == null ? null : Simplification.byId(raw.trim());
+        return level == null ? fallback : level;
+    }
+
     private static FloatFormat readFloatFormat(Properties props, FloatFormat fallback) {
         String raw = props.getProperty("modes.floatStyle");
         FloatFormat.Style style = raw == null ? null : FloatFormat.Style.byId(raw.trim());

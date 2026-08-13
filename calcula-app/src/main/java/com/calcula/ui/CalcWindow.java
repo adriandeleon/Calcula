@@ -76,6 +76,7 @@ import com.calcula.machine.Machine;
 import com.calcula.machine.MachineException;
 import com.calcula.machine.Modes;
 import com.calcula.machine.Op;
+import com.calcula.machine.Simplification;
 import com.calcula.machine.TrailEntry;
 import com.calcula.parse.Formatter;
 import com.calcula.parse.Parser;
@@ -1138,6 +1139,17 @@ public final class CalcWindow {
                 m -> m.withFractions(!m.fractions()));
         registry.register(
                 "mode.precision", "Set precision", "Working digits for inexact arithmetic", this::setPrecision);
+        for (Simplification level : Simplification.values()) {
+            registry.register(
+                    "mode.simplify" + level.name().charAt(0)
+                            + level.name().substring(1).toLowerCase(java.util.Locale.ROOT),
+                    "Simplify: " + level.id(),
+                    simplificationHelp(level),
+                    () -> onMachine(m -> {
+                        m.apply(new Op.SetModes(m.modes().withSimplification(level)));
+                        m.record(new TrailEntry(TrailEntry.Kind.NOTE, m.modes().describe()));
+                    }));
+        }
         registry.register(
                 "mode.radix",
                 "Set the base",
@@ -1198,6 +1210,17 @@ public final class CalcWindow {
             m.apply(new Op.SetModes(m.modes().withFloats(next)));
             m.record(new TrailEntry(TrailEntry.Kind.NOTE, m.modes().describe()));
         });
+    }
+
+    /** What each level actually does here, said in the palette rather than left to a manual. */
+    private static String simplificationHelp(Simplification level) {
+        return switch (level) {
+            case NONE -> "Do not evaluate at all — what you type is what lands";
+            case NUMERIC -> "Arithmetic only, never the engine";
+            case DEFAULT -> "Arithmetic, then the engine";
+            case ALGEBRAIC -> "And then ask the engine to simplify";
+            case EXTENDED -> "And then ask it to try harder — slow, and sometimes the only thing that works";
+        };
     }
 
     /** The base to show whole numbers in, from the input line. */

@@ -15,9 +15,17 @@ import com.calcula.bits.Bitwise;
  * @param floats how an inexact number is shown -- display only, never what is stored
  * @param wordSize how wide a word is, for the bitwise operations that mean nothing without one
  * @param radix the base whole numbers are shown in -- display only, like {@code floats}
+ * @param simplification how hard to work on an answer
  */
 public record Modes(
-        Angle angle, int precision, boolean symbolic, boolean fractions, FloatFormat floats, int wordSize, int radix) {
+        Angle angle,
+        int precision,
+        boolean symbolic,
+        boolean fractions,
+        FloatFormat floats,
+        int wordSize,
+        int radix,
+        Simplification simplification) {
 
     /** Base ten, and the only base in which the grouping and the decimal point mean what they say. */
     public static final int DECIMAL = 10;
@@ -28,12 +36,27 @@ public record Modes(
     public static final int MAX_RADIX = 36;
 
     /** Calc's own defaults: radians, twelve digits, symbolic, fractions preferred, every digit shown. */
-    public static final Modes DEFAULTS =
-            new Modes(Angle.RADIANS, 12, true, true, FloatFormat.NORMAL, Bitwise.DEFAULT_WORD_SIZE, DECIMAL);
+    public static final Modes DEFAULTS = new Modes(
+            Angle.RADIANS,
+            12,
+            true,
+            true,
+            FloatFormat.NORMAL,
+            Bitwise.DEFAULT_WORD_SIZE,
+            DECIMAL,
+            Simplification.DEFAULT);
 
     /** The four that were here before display and words, for the callers that do not care about either. */
     public Modes(Angle angle, int precision, boolean symbolic, boolean fractions) {
-        this(angle, precision, symbolic, fractions, FloatFormat.NORMAL, Bitwise.DEFAULT_WORD_SIZE, DECIMAL);
+        this(
+                angle,
+                precision,
+                symbolic,
+                fractions,
+                FloatFormat.NORMAL,
+                Bitwise.DEFAULT_WORD_SIZE,
+                DECIMAL,
+                Simplification.DEFAULT);
     }
 
     public static final int MIN_PRECISION = 3;
@@ -48,6 +71,9 @@ public record Modes(
         }
         if (wordSize < Bitwise.MIN_WORD_SIZE || wordSize > Bitwise.MAX_WORD_SIZE) {
             throw new IllegalArgumentException("word size out of range: " + wordSize);
+        }
+        if (simplification == null) {
+            throw new IllegalArgumentException("null simplification level");
         }
         if (radix < MIN_RADIX || radix > MAX_RADIX) {
             throw new IllegalArgumentException("radix must be between " + MIN_RADIX + " and " + MAX_RADIX);
@@ -77,31 +103,35 @@ public record Modes(
     }
 
     public Modes withAngle(Angle newAngle) {
-        return new Modes(newAngle, precision, symbolic, fractions, floats, wordSize, radix);
+        return new Modes(newAngle, precision, symbolic, fractions, floats, wordSize, radix, simplification);
     }
 
     public Modes withPrecision(int newPrecision) {
-        return new Modes(angle, newPrecision, symbolic, fractions, floats, wordSize, radix);
+        return new Modes(angle, newPrecision, symbolic, fractions, floats, wordSize, radix, simplification);
     }
 
     public Modes withSymbolic(boolean newSymbolic) {
-        return new Modes(angle, precision, newSymbolic, fractions, floats, wordSize, radix);
+        return new Modes(angle, precision, newSymbolic, fractions, floats, wordSize, radix, simplification);
     }
 
     public Modes withFractions(boolean newFractions) {
-        return new Modes(angle, precision, symbolic, newFractions, floats, wordSize, radix);
+        return new Modes(angle, precision, symbolic, newFractions, floats, wordSize, radix, simplification);
     }
 
     public Modes withFloats(FloatFormat newFloats) {
-        return new Modes(angle, precision, symbolic, fractions, newFloats, wordSize, radix);
+        return new Modes(angle, precision, symbolic, fractions, newFloats, wordSize, radix, simplification);
     }
 
     public Modes withWordSize(int newWordSize) {
-        return new Modes(angle, precision, symbolic, fractions, floats, newWordSize, radix);
+        return new Modes(angle, precision, symbolic, fractions, floats, newWordSize, radix, simplification);
     }
 
     public Modes withRadix(int newRadix) {
-        return new Modes(angle, precision, symbolic, fractions, floats, wordSize, newRadix);
+        return new Modes(angle, precision, symbolic, fractions, floats, wordSize, newRadix, simplification);
+    }
+
+    public Modes withSimplification(Simplification level) {
+        return new Modes(angle, precision, symbolic, fractions, floats, wordSize, radix, level);
     }
 
     /** The rounding context inexact arithmetic works to. */
@@ -122,6 +152,14 @@ public record Modes(
         }
         if (wordSize != Bitwise.DEFAULT_WORD_SIZE) {
             out.append("  word ").append(wordSize);
+        }
+        if (simplification == Simplification.NONE) {
+            // Named rather than abbreviated, because it is the one level that changes what an answer
+            // IS rather than how hard it was worked on, and somebody who left it on by accident has
+            // to be able to see why nothing is computing.
+            out.append("  no eval");
+        } else if (!simplification.label().isEmpty()) {
+            out.append("  ").append(simplification.label());
         }
         if (symbolic) {
             out.append("  symb");
