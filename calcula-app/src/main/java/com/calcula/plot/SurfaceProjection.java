@@ -106,6 +106,17 @@ public record SurfaceProjection(
     }
 
     /**
+     * Where a point sits in the unit cube the projection works in, as {@code {x, y, z}} in
+     * {@code [-0.5, 0.5]}.
+     *
+     * <p>Exposed because shading has to normalise exactly the way projection does. Working it out a
+     * second time somewhere else is how the two quietly come to disagree.
+     */
+    public double[] normalised(double x, double y, double z) {
+        return new double[] {norm(x, xMin, xMax), norm(y, yMin, yMax), norm(z, zMin, zMax)};
+    }
+
+    /**
      * How near the viewer a point is. Larger is nearer.
      *
      * <p>Only ever compared, never measured, which is why it is a bare number rather than a distance:

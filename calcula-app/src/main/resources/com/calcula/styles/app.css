@@ -254,6 +254,16 @@
     -fx-border-width: 1;
 }
 
+/*
+ * A surface is solid, and what it is made of has to be the ground it is drawn on:
+ * any other colour and the near cells covering the far ones would read as a slab
+ * laid over the plot rather than as the object having a front and a back. Opaque,
+ * necessarily — the far side is hidden by being painted over and by nothing else.
+ */
+.surface-canvas {
+    -fx-surface-fill: -color-bg-inset;
+}
+
 /* ---- menu bar ----------------------------------------------------------
  * On macOS this is the system menu bar and none of this applies; the styling
  * is for the in-window bar every other platform gets.
