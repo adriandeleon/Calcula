@@ -24,13 +24,21 @@ and showing you the answer.
 never heard of rather than throwing. That totality was adopted so an engine upgrade could not break
 the adapter — and its second consequence is that **Symja's entire library is already callable**.
 
-Confirmed against the staged jar: `Quantity`, `UnitConvert`, `Interval`, `DateObject`, `BaseForm`,
-`IntegerDigits`, `Mean`, `Median`, `StandardDeviation`, `BesselJ`, `Gamma` all resolve today. Type
-`StandardDeviation([1,2,3,4])` and it answers.
+Type `StandardDeviation([1,2,3,4])` and it answers, and until the catalogue grew, nothing in the
+window said so — which is precisely the failure that table's own javadoc describes. Most of what looks
+missing below is surface: a name, a key, a mode, a printed form. Not capability.
 
-None of them appears in `Functions`, so none of them is findable — which is precisely the failure that
-table's own javadoc describes. Most of what looks missing below is surface: a name, a key, a mode, a
-printed form. Not capability.
+**With one correction, which cost an afternoon and is the reason every catalogue entry is now run
+before it is written down.** Reading a symbol out of the jar's symbol table proves the engine has it
+and nothing else. Two things break that inference, in opposite directions:
+
+- **`Fit` is a real Symja symbol that comes back unevaluated**, so the name existing said the opposite
+  of the truth. `FindFit` is the one that answers.
+- **`Quantity` and `UnitConvert` cannot be called at all.** They take a string, and this notation has
+  no string literal — the lexer refuses the quote long before the engine is asked. Units were the
+  headline example of a capability one table edit away, and they are not: they need syntax first.
+
+So "the engine has it" and "a user can reach it" are different claims, and only the second one counts.
 
 ## Where Calcula is ahead
 
@@ -53,14 +61,24 @@ is why the question of which one is the default could honestly be left to a pref
 
 ## Where Calc is ahead
 
-### Surface only — the engine can already do it
+### Surface only — the engine can already do it, and now the catalogue says so
 
-| | Symja has | Issue |
+Everything here was probed against the real engine and is listed in `Functions` as of #3.
+
+| | What answers | Issue |
 |---|---|---|
-| Units — `u c` convert, `u b` base, `u d` define | `Quantity`, `UnitConvert` | [#3](https://github.com/adriandeleon/Calcula/issues/3), [#5](https://github.com/adriandeleon/Calcula/issues/5) |
-| Statistics — mean, median, sdev, covariance | `Mean`, `Median`, `StandardDeviation`, `Variance` | [#3](https://github.com/adriandeleon/Calcula/issues/3), [#6](https://github.com/adriandeleon/Calcula/issues/6) |
-| Radix 2–36, `d 2` / `d 6` | `BaseForm`, `IntegerDigits` | [#3](https://github.com/adriandeleon/Calcula/issues/3), [#12](https://github.com/adriandeleon/Calcula/issues/12) |
-| Gamma, erf, Bessel, Bernoulli, Stirling | all present | [#3](https://github.com/adriandeleon/Calcula/issues/3) |
+| Statistics — mean, median, sdev, covariance | `Mean`, `Median`, `StandardDeviation`, `Variance`, `Quartiles`, `Correlation` | [#6](https://github.com/adriandeleon/Calcula/issues/6) |
+| Curve fitting — `a F` | `FindFit` (**not** `Fit`, which comes back unevaluated) | [#6](https://github.com/adriandeleon/Calcula/issues/6) |
+| Map, reduce and apply over a list — `V M`, `V R`, `V A` | `Map`, `Fold`, `Apply`, and `Range`/`Table` to make one | [#10](https://github.com/adriandeleon/Calcula/issues/10) |
+| Set operations — `V +`, `V ^` | `Union`, `Intersection` | [#10](https://github.com/adriandeleon/Calcula/issues/10) |
+| Gamma, erf, Bessel, Bernoulli | `Gamma`, `Erf`, `BesselJ`, `BernoulliB` — symbolic until wrapped in `N` | — |
+| Numeric root, minimum, integral — `a R`, `a N` | `FindRoot`, `FindMinimum`, `NMaximize`, `NIntegrate` | — |
+| Intervals `[a..b]` | `Interval`, and arithmetic carries the bounds | [#9](https://github.com/adriandeleon/Calcula/issues/9) |
+| Digits of a number in a base | `IntegerDigits`, `FromDigits` — but not a radix *display* | [#12](https://github.com/adriandeleon/Calcula/issues/12) |
+
+**Units are not on this list, and that is the correction.** `Quantity` and `UnitConvert` are in the
+jar and neither can be typed: both take a string, and the notation has no string literal. Units need
+syntax before they need a table entry — see [#5](https://github.com/adriandeleon/Calcula/issues/5).
 
 ### Not built
 
@@ -90,12 +108,13 @@ in a form the parser cannot read is data loss at *save* time. `Expr.Num` being s
 means adding one is a deliberate widening with a compiler-enforced list of everywhere that must learn
 about it, which is the right way round.
 
-**Vectors as something you can operate**
-([#10](https://github.com/adriandeleon/Calcula/issues/10)) — `V M` map, `V R` reduce, `V A` apply,
-`v p`/`v u` pack and unpack the stack, `v x` ranges, set operations. Calcula can invert a matrix and
-find its eigenvalues, and cannot build a vector except by typing it out in full. Pack and unpack are
-the two that matter most on a stack machine and neither exists. This is what makes statistics feel
-further away than the function list suggests.
+**Vectors, on the stack rather than in an expression**
+([#10](https://github.com/adriandeleon/Calcula/issues/10)) — the *functions* turned out to be there
+and merely unfindable: `Map`, `Fold`, `Apply`, `Union`, `Range` and `Table` all answer, and are
+catalogued as of #3. What is missing is the stack half — Calc's `v p` and `v u`, which pack the top N
+entries into a vector and unpack one back onto the stack. Without them the only way to get a vector is
+to type it out in full, which is what makes statistics feel further away than the function list
+suggests, and it is the gesture rather than the arithmetic that is absent.
 
 **Binary and word operations** ([#12](https://github.com/adriandeleon/Calcula/issues/12)) — and, or,
 xor, shifts and rotates against a configurable word size, which is a mode because the operations are
@@ -135,12 +154,16 @@ the same key as a number is a different bargain, and mostly a better one.
 
 ## Where to start
 
-1. **[#2](https://github.com/adriandeleon/Calcula/issues/2), variables.** The machine half is written
-   and tested and the file format exists; what is missing is two commands and a substitution step.
-   Nothing else on this list is worth less work.
-2. **[#3](https://github.com/adriandeleon/Calcula/issues/3), grow the catalogue.** Table edits only,
-   and it makes a whole tier of already-working capability findable.
+1. ~~**[#2](https://github.com/adriandeleon/Calcula/issues/2), variables.**~~ Done. Storing binds,
+   `=` resolves, and nothing else does — which is Calc's division and the only real decision in it.
+2. ~~**[#3](https://github.com/adriandeleon/Calcula/issues/3), grow the catalogue.**~~ Done, and it
+   was not the table edit it looked like: every candidate had to be run first, which is how the units
+   correction above was found.
 3. **[#4](https://github.com/adriandeleon/Calcula/issues/4), float display.** One `Modes` field and one
    `Formatter` branch, and it fixes something visible on every inexact answer.
 4. **[#7](https://github.com/adriandeleon/Calcula/issues/7), rewrite rules.** The large one, and the
    one that would most change what Calcula is.
+
+Next after those, and cheaper than they read: [#24](https://github.com/adriandeleon/Calcula/issues/24)
+(nothing lists what is bound, which is the loose end #2 left) and the stack half of
+[#10](https://github.com/adriandeleon/Calcula/issues/10).

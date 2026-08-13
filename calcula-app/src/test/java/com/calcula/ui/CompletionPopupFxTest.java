@@ -114,6 +114,11 @@ class CompletionPopupFxTest {
     @Test
     void aShortListDoesNotGetAScrollbarsWorthOfEmptySpace() throws Exception {
         Shown shown = showFor("prim");
-        assertEquals(2, shown.rows().size(), "PrimeQ and Prime");
+        // Against the catalogue rather than a number written here, which was 2 until PrimePi joined
+        // the table and made this fail for a reason that had nothing to do with layout.
+        assertEquals(
+                com.calcula.parse.Functions.startingWith("prim").size(),
+                shown.rows().size(),
+                "one row per match, and no filler");
     }
 }
