@@ -370,6 +370,19 @@ the map was reachable. Binding something to `x` must not change what `deriv(x^2,
 never rewrites the stack; `C-x e` is where you ask for the substitution, and it is one pass, so a
 binding that mentions itself terminates instead of recursing.
 
+### Ranges
+
+`1 .. 2` is a range, and arithmetic carries the bounds: `(1 .. 2) * (3 .. 4)` is `3 .. 8`. Typed with
+dots and set as `[1 .. 2]`, the same split as `+/-` against `±`.
+
+**No interval arithmetic is implemented here, deliberately.** A range parses to `Interval({a, b})` —
+the *engine's* own shape, not a two-argument call, because `Interval(1, 2)` means two degenerate
+intervals to Symja and would have been wrong in a way nothing reported. Building what it already
+understands means its arithmetic works untouched, and it knows things local code would not: `sin(1 ..
+2)` is `sin(1) .. 1`, because the range contains a half-turn and the sine peaks at one inside it.
+That is the opposite trade from measurements, which are folded locally and work with no engine —
+there, the arithmetic is a page of algebra; here, it is the engine's whole point.
+
 ### Measurements
 
 `2 +/- 0.1` is a measurement and how far out it might be, and arithmetic carries the error through:
