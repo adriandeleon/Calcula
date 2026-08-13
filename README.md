@@ -370,6 +370,18 @@ the map was reachable. Binding something to `x` must not change what `deriv(x^2,
 never rewrites the stack; `C-x e` is where you ask for the substitution, and it is one pass, so a
 binding that mentions itself terminates instead of recursing.
 
+### Vectors on the stack
+
+`M-v p` takes the top values and makes one list of them — the count off the input line, two if it is
+empty — and `M-v u` puts a list's elements back. Two commands, and they are what the list half of the
+engine was waiting for: `Map`, `Fold`, `Apply`, `Union`, `Sort` and every statistic all worked
+already, and the only way to hand one a list was to type it out in full, on a stack that was holding
+the numbers.
+
+Packing needs no operation of its own. It is `Apply` with the list head, which already pops the right
+number of values, refuses politely when the stack is too short, and records the call it built as the
+provenance. Unpacking does need one, because nothing else in the vocabulary turns one value into many.
+
 ### Sheets, tabs and files
 
 A sheet is a stack, a trail, the variables and the modes it was worked under. It saves as

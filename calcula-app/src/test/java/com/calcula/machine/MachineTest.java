@@ -321,6 +321,66 @@ class MachineTest {
         assertEquals(List.of("42"), display(m), "and the value it took is back where it was");
     }
 
+    // ---- packing ---------------------------------------------------------------------------
+
+    @Test
+    void packingTakesTheTopValuesAndMakesOneListOfThem() {
+        Machine m = machine();
+        m.applyAll(List.of(push("1"), push("2"), push("3")));
+        m.apply(new Op.Apply(Exprs.LIST, 2));
+        assertEquals(List.of("1", "[2, 3]"), display(m), "the bottom value is left where it was");
+    }
+
+    @Test
+    void unpackingPutsTheElementsBack() {
+        Machine m = machine();
+        m.apply(push("[1, 2, 3]"));
+        m.apply(new Op.Unpack());
+        assertEquals(List.of("1", "2", "3"), display(m));
+    }
+
+    @Test
+    void packingAndUnpackingAreInverses() {
+        Machine m = machine();
+        m.applyAll(List.of(push("1"), push("x + 1"), push("3")));
+        List<String> before = display(m);
+        m.apply(new Op.Apply(Exprs.LIST, 3));
+        m.apply(new Op.Unpack());
+        assertEquals(before, display(m));
+    }
+
+    @Test
+    void unpackingAnEmptyListLeavesNothingBehind() {
+        Machine m = machine();
+        m.applyAll(List.of(push("7"), push("[]")));
+        m.apply(new Op.Unpack());
+        assertEquals(List.of("7"), display(m), "the list is gone and put nothing in its place");
+    }
+
+    @Test
+    void unpackingSomethingThatIsNotAListIsRefusedWithoutTouchingTheStack() {
+        Machine m = machine();
+        m.apply(push("42"));
+        assertThrows(MachineException.class, () -> m.apply(new Op.Unpack()));
+        assertEquals(List.of("42"), display(m));
+    }
+
+    @Test
+    void unpackedElementsRememberTheListTheyCameOutOf() {
+        Machine m = machine();
+        m.apply(push("[1, 2]"));
+        m.apply(new Op.Unpack());
+        assertEquals("[1, 2]", Formatter.format(m.state().entryAt(1).origin()));
+    }
+
+    @Test
+    void packingMoreThanIsThereChangesNothing() {
+        Machine m = machine();
+        m.apply(push("1"));
+        assertThrows(MachineException.class, () -> m.apply(new Op.Apply(Exprs.LIST, 5)));
+        assertEquals(List.of("1"), display(m));
+    }
+
     // ---- trail -----------------------------------------------------------------------------
 
     @Test

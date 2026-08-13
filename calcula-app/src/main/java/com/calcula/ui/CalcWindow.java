@@ -635,6 +635,13 @@ public final class CalcWindow {
                 this::recallVariable);
         registry.register("var.list", "Variables…", "Everything bound, and to what", variableSheet::show);
         registry.register(
+                "stack.pack",
+                "Pack into a list",
+                "Take the top values off the stack and make one list of them",
+                this::packStack);
+        registry.register(
+                "stack.unpack", "Unpack a list", "Put the elements of the top list on the stack", this::unpackStack);
+        registry.register(
                 "var.clear",
                 "Unbind variable",
                 "Forget what the name on the input line is bound to",
@@ -1206,6 +1213,45 @@ public final class CalcWindow {
         });
     }
 
+    /**
+     * Make one list out of the top values.
+     *
+     * <p>This is the gesture that was missing, not the arithmetic. Every list function the engine has
+     * works — Map, Fold, Apply, Union, the statistics — and the only way to get a list to give them was
+     * to type it out in full, which on a stack holding the numbers already is absurd.
+     *
+     * <p>The count comes off the input line, like precision and the digit count. A blank line packs
+     * two: the smallest pack worth a command, and the one that needs no thought when the two values
+     * are already sitting there.
+     *
+     * <p>No operation of its own — this is {@link Op.Apply} with the list head, which already pops the
+     * right number of values, refuses politely when the stack is too short, and records the call it
+     * built as the provenance.
+     */
+    private void packStack() {
+        String typed = input.getText().trim();
+        int count = 2;
+        if (!typed.isEmpty()) {
+            try {
+                count = Integer.parseInt(typed);
+            } catch (NumberFormatException e) {
+                onMachine(m -> m.recordError("type how many values to pack, or leave the line empty for two"));
+                return;
+            }
+            if (count < 1) {
+                onMachine(m -> m.recordError("a list has to have at least one value in it"));
+                return;
+            }
+            input.clear();
+        }
+        machineOp(new Op.Apply(Exprs.LIST, count));
+    }
+
+    /** Put the elements of the top list back on the stack. */
+    private void unpackStack() {
+        machineOp(new Op.Unpack());
+    }
+
     /** Unbind whatever the input line names. */
     private void unbindFromInputLine() {
         String name = variableNameOnInputLine();
@@ -1313,6 +1359,10 @@ public final class CalcWindow {
         keymap.bind("M-s s", "var.storeKeep");
         keymap.bind("M-s r", "var.recall");
         keymap.bind("M-s l", "var.list");
+        // Calc's v p and v u, one modifier out for the same reason M-s is: a bare letter has to keep
+        // reaching the input line, which is where the count comes from.
+        keymap.bind("M-v p", "stack.pack");
+        keymap.bind("M-v u", "stack.unpack");
         // Calc's s u, unstore.
         keymap.bind("M-s u", "var.clear");
         // M-x for the palette, as in Emacs. Both spellings of the settings chord, since Chords emits
