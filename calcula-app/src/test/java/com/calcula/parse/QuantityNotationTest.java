@@ -61,4 +61,17 @@ class QuantityNotationTest {
         assertEquals("1@ 30' 0\"", roundTrip("1@ 30' 0\""));
         assertEquals("3 s", roundTrip("3 s"));
     }
+
+    /**
+     * A negative quantity is a quantity, not the negation of one.
+     *
+     * <p>Left as {@code Minus(Quantity(40, degC))} it stops being recognisable as a quantity at all,
+     * and a temperature conversion — which must see the unit to know it is one — quietly stops
+     * folding: {@code -40 degC} to Fahrenheit answers with itself.
+     */
+    @Test
+    void aLeadingMinusFoldsIntoTheQuantity() {
+        assertEquals("-40 degC", roundTrip("-40 degC"));
+        assertEquals("-2.5 m", roundTrip("-2.5 m"));
+    }
 }
