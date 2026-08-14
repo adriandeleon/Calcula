@@ -6,6 +6,7 @@ import java.util.List;
 
 import com.calcula.expr.Expr;
 import com.calcula.expr.Exprs;
+import com.calcula.parse.Formatter;
 import org.matheclipse.core.eval.ExprEvaluator;
 import org.matheclipse.core.expression.F;
 import org.matheclipse.core.interfaces.IAST;
@@ -80,11 +81,11 @@ final class ExprAdapter {
         // untouched — Quantity(3, m) + Quantity(2, m) stays a sum rather than becoming 5[m] — which
         // looks like the engine not supporting units rather than like us asking wrongly. Ours has no
         // string leaf and does not need one for this: the only place a string is meant is the unit.
-        if (QUANTITY.equals(c.head()) && args.size() == 2 && args.get(1) instanceof Expr.Sym unit) {
-            return F.Quantity(toSymja(args.get(0)), F.stringx(unit.name()));
+        if (QUANTITY.equals(c.head()) && args.size() == 2) {
+            return F.Quantity(toSymja(args.get(0)), F.stringx(unitString(args.get(1))));
         }
-        if (UNIT_CONVERT.equals(c.head()) && args.size() == 2 && args.get(1) instanceof Expr.Sym unit) {
-            return F.ast(new IExpr[] {toSymja(args.get(0)), F.stringx(unit.name())}, F.$s(UNIT_CONVERT));
+        if (UNIT_CONVERT.equals(c.head()) && args.size() == 2) {
+            return F.ast(new IExpr[] {toSymja(args.get(0)), F.stringx(unitString(args.get(1)))}, F.$s(UNIT_CONVERT));
         }
         if (APPLY.equals(c.head()) && !args.isEmpty()) {
             IExpr head = toSymja(args.get(0));
@@ -125,6 +126,23 @@ final class ExprAdapter {
     }
 
     // ------------------------------------------------------------------ theirs → ours
+
+    /**
+     * A unit as the engine spells it.
+     *
+     * <p>A simple unit arrives as a symbol and is its own name. A compound one — {@code m*s^-1} out of
+     * a division — comes back from the engine as a single name, but once it has been through the
+     * parser it is an expression again: {@code Times(m, Power(s, -1))}. Sent as that expression it
+     * stops being a unit at all. The engine treats {@code Quantity(3/2, m/s)} as an ordinary call over
+     * a symbol, simplifies {@code m*s^-1} to {@code m/s} as algebra, and hands back something that
+     * looks almost right and is no longer a quantity: the next conversion on it silently does nothing.
+     *
+     * <p>Formatting it is the translation, not a display choice — {@code Formatter} already writes
+     * exactly the syntax the engine's unit parser reads, because both are ordinary infix.
+     */
+    private static String unitString(Expr unit) {
+        return unit instanceof Expr.Sym s ? s.name() : Formatter.format(unit);
+    }
 
     Expr fromSymja(IExpr e) {
         if (e == null) {
