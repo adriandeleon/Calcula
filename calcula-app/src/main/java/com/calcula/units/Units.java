@@ -71,6 +71,10 @@ public final class Units {
             "rad",
             "deg",
             "sr",
+            // temperature, which converts here rather than in the engine: it is affine
+            "degC",
+            "degF",
+            "degR",
             // derived
             "N",
             "J",

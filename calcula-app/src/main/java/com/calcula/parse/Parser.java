@@ -5,6 +5,7 @@ import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.calcula.expr.Arith;
 import com.calcula.expr.Expr;
 import com.calcula.expr.Exprs;
 import com.calcula.machine.Modes;
@@ -172,6 +173,17 @@ public final class Parser {
             }
             if (operand instanceof Expr.Flt f) {
                 return Exprs.of(f.value().negate());
+            }
+            // A quantity is a literal too, and the same argument applies: -40 degC is a reading of
+            // minus forty, not the negation of a reading of forty. Left as Minus(...) it is no longer
+            // recognisable as a quantity, so a temperature conversion — which has to see the unit to
+            // know it is one — stops folding, and -40 degC to Fahrenheit answers with itself.
+            if (operand instanceof Expr.Call q
+                    && q.head().equals(Units.QUANTITY)
+                    && q.arity() == 2
+                    && q.arg(0) instanceof Expr.Num value
+                    && q.arg(1) instanceof Expr.Sym) {
+                return Exprs.call(Units.QUANTITY, Arith.neg(value), q.arg(1));
             }
             return Exprs.call("Minus", operand);
         }

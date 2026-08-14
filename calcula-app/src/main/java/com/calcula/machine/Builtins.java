@@ -13,6 +13,8 @@ import com.calcula.expr.Exprs;
 import com.calcula.finance.Finance;
 import com.calcula.hms.HmsForm;
 import com.calcula.modular.ModuloForm;
+import com.calcula.units.Temperature;
+import com.calcula.units.Units;
 
 /**
  * The functions this calculator implements itself.
@@ -71,6 +73,11 @@ public final class Builtins {
                     Expr duration = clock(head, args, mc);
                     yield duration != null ? duration : measured(head, args, mc);
                 }
+                // Folded here rather than sent out, because the engine will not do it: every other
+                // conversion is a factor and this one has an offset, so UnitConvert on two temperature
+                // scales comes back from Symja untouched. Anything that is not two temperature scales
+                // answers null and goes where it always went.
+                case "UnitConvert" -> temperature(args);
                 case "BitAnd" -> bits(args, 2, w -> Bitwise.and(w[0], w[1], modes.wordSize()));
                 case "BitOr" -> bits(args, 2, w -> Bitwise.or(w[0], w[1], modes.wordSize()));
                 case "BitXor" -> bits(args, 2, w -> Bitwise.xor(w[0], w[1], modes.wordSize()));
@@ -336,6 +343,21 @@ public final class Builtins {
 
     /** The head a duration is held as. */
     public static final String HMS = "HMS";
+
+    /** A reading on one temperature scale as a reading on another, or null for anything else. */
+    private static Expr temperature(List<Expr> args) {
+        if (args.size() != 2
+                || !(args.get(0) instanceof Expr.Call quantity)
+                || !quantity.head().equals(Units.QUANTITY)
+                || quantity.arity() != 2
+                || !(quantity.arg(0) instanceof Expr.Num reading)
+                || !(quantity.arg(1) instanceof Expr.Sym from)
+                || !(args.get(1) instanceof Expr.Sym to)
+                || !Temperature.isConversion(from.name(), to.name())) {
+            return null;
+        }
+        return Exprs.call(Units.QUANTITY, Temperature.convert(reading, from.name(), to.name()), to);
+    }
 
     /**
      * Arithmetic where at least one argument is a measurement.
