@@ -13,6 +13,7 @@ import org.matheclipse.core.interfaces.IExpr;
 import org.matheclipse.core.interfaces.IFraction;
 import org.matheclipse.core.interfaces.IInteger;
 import org.matheclipse.core.interfaces.ISymbol;
+import org.matheclipse.core.tensor.qty.IQuantity;
 
 /**
  * Converts between {@link Expr} and Symja's {@code IExpr}, in both directions, <em>totally</em>.
@@ -44,6 +45,11 @@ final class ExprAdapter {
     /** An engine value we do not model, carried as its printed form. */
     static final String ENGINE = "$Engine";
 
+    /** The engine's own heads for units, which is why they need no translation beyond the string. */
+    private static final String QUANTITY = "Quantity";
+
+    private static final String UNIT_CONVERT = "UnitConvert";
+
     private final ExprEvaluator evaluator;
 
     ExprAdapter(ExprEvaluator evaluator) {
@@ -70,6 +76,16 @@ final class ExprAdapter {
             return evaluator.eval(s.name());
         }
         List<Expr> args = c.args();
+        // A unit is a STRING to the engine, not a symbol. Sent as a symbol the whole call comes back
+        // untouched — Quantity(3, m) + Quantity(2, m) stays a sum rather than becoming 5[m] — which
+        // looks like the engine not supporting units rather than like us asking wrongly. Ours has no
+        // string leaf and does not need one for this: the only place a string is meant is the unit.
+        if (QUANTITY.equals(c.head()) && args.size() == 2 && args.get(1) instanceof Expr.Sym unit) {
+            return F.Quantity(toSymja(args.get(0)), F.stringx(unit.name()));
+        }
+        if (UNIT_CONVERT.equals(c.head()) && args.size() == 2 && args.get(1) instanceof Expr.Sym unit) {
+            return F.ast(new IExpr[] {toSymja(args.get(0)), F.stringx(unit.name())}, F.$s(UNIT_CONVERT));
+        }
         if (APPLY.equals(c.head()) && !args.isEmpty()) {
             IExpr head = toSymja(args.get(0));
             return F.ast(convert(args.subList(1, args.size())), head);
@@ -113,6 +129,13 @@ final class ExprAdapter {
     Expr fromSymja(IExpr e) {
         if (e == null) {
             return Exprs.sym("Null");
+        }
+        // Before the number tests and long before the $Engine fallback. A quantity is not an AST and
+        // is not a number, so without this it lands in the opaque escape hatch as Sym("3[m]") — which
+        // survives, prints as engine text, and cannot be parsed back. That is data loss at save time
+        // rather than a missing feature.
+        if (e instanceof IQuantity q) {
+            return Exprs.call(QUANTITY, fromSymja(q.value()), Exprs.sym(q.unitString()));
         }
         // Order matters: an integer is also "real" and "a number", so test narrowest first.
         if (e.isInteger()) {

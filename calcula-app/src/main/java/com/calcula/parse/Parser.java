@@ -10,6 +10,7 @@ import com.calcula.expr.Exprs;
 import com.calcula.machine.Modes;
 import com.calcula.parse.Lexer.Kind;
 import com.calcula.parse.Lexer.Token;
+import com.calcula.units.Units;
 
 /**
  * Precedence-climbing parser for conventional mathematical notation — {@code sin(x)}, {@code x^2},
@@ -202,7 +203,16 @@ public final class Parser {
             case NUMBER -> {
                 Expr n = number(t);
                 Expr duration = hmsAfter(n);
-                return duration != null ? duration : n;
+                if (duration != null) {
+                    return duration;
+                }
+                // A unit name directly after a number, and only a name on the closed list: `3 m` is
+                // three metres, `3 x` is the parse error it always was. Read here rather than at a
+                // precedence level for the same reason a duration is — a quantity is a literal.
+                if (peek().kind() == Kind.SYMBOL && Units.isUnit(peek().text())) {
+                    return Exprs.call(Units.QUANTITY, n, Exprs.sym(next().text()));
+                }
+                return n;
             }
             case SYMBOL -> {
                 if (peek().kind() == Kind.LPAREN) {

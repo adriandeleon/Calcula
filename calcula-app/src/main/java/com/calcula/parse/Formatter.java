@@ -15,6 +15,7 @@ import com.calcula.expr.Expr.Rat;
 import com.calcula.expr.Expr.Sym;
 import com.calcula.expr.Exprs;
 import com.calcula.hms.HmsForm;
+import com.calcula.units.Units;
 
 /**
  * Renders an {@link Expr} back to the notation {@link Parser} accepts, with the fewest parentheses that
@@ -129,6 +130,25 @@ public final class Formatter {
                     return bracket(
                             write(c.arg(0), PREC_ERROR, false) + " mod " + write(c.arg(1), PREC_ERROR, true),
                             PREC_ERROR,
+                            parentPrec,
+                            weakSide);
+                }
+            }
+            case "Quantity" -> {
+                // `3 m`, which is what was typed. Quantity(3, m) is the engine's spelling and nobody
+                // types it, so printing that back would make the round trip a thing only a machine
+                // could read.
+                // Only for a unit the parser will read back. A compound one comes out of the engine
+                // as a single name — `m^2`, `m*s^-1` — and `12 m^2` reads back as (12 m)^2, which is
+                // 144 square metres: a wrong answer produced by printing, and silently, at save time.
+                // The engine's own spelling is ugly and stable, and stable is the one that matters.
+                if (c.arity() == 2
+                        && c.arg(0) instanceof Num value
+                        && c.arg(1) instanceof Sym unit
+                        && Units.isUnit(unit.name())) {
+                    return bracket(
+                            write(value, PREC_MULTIPLICATIVE, false) + " " + unit.name(),
+                            PREC_MULTIPLICATIVE,
                             parentPrec,
                             weakSide);
                 }
@@ -286,6 +306,7 @@ public final class Formatter {
             case "Rule" -> PREC_RULE;
             case "Equal", "Less", "Greater", "LessEqual", "GreaterEqual", "Unequal" -> PREC_RELATION;
             case "PlusMinus", "Interval", "Modulo" -> PREC_ERROR;
+            case "Quantity" -> PREC_MULTIPLICATIVE;
             case "Plus", "Subtract" -> PREC_ADDITIVE;
             case "Times", "Divide" -> PREC_MULTIPLICATIVE;
             case "Minus" -> PREC_UNARY;
