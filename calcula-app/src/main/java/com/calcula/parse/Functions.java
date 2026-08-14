@@ -235,7 +235,8 @@ public final class Functions {
                 doc(
                         "PlusMinus",
                         "PlusMinus(value, error)",
-                        "A measurement and how far out it might be — usually typed value +/- error"));
+                        "A measurement and how far out it might be — usually typed value +/- error"),
+                doc("HMS", "HMS(hours, minutes, seconds)", "A duration — usually typed 1@ 30' 0\""));
 
         group(
                 "Bits",
