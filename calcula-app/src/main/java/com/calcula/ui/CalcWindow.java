@@ -16,12 +16,15 @@ import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -31,6 +34,8 @@ import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyEvent;
@@ -1188,16 +1193,159 @@ public final class CalcWindow {
         flash("copied " + text.lines().count() + " line(s)");
     }
 
-    /** A note raised from the FX thread, where the machine itself must not be touched. */
+    /**
+     * The About panel.
+     *
+     * <p>Built as content rather than as an Alert's header and body, so the icon, name, version and
+     * tagline read as one block the way a native About panel does. An Alert's own header band puts a
+     * rule through the middle of exactly the part that should read as a unit.
+     *
+     * <p>The environment block is the reason this is more than a version string. A bug report needs
+     * the Java, the JavaFX and the OS, and asking someone to find those is asking them not to report
+     * it — so they are on screen and one button puts them on the clipboard.
+     */
     private void showAbout() {
         Alert about = new Alert(Alert.AlertType.INFORMATION);
-        about.setTitle("About Calcula");
-        about.setHeaderText(AppInfo.NAME + " " + AppInfo.VERSION);
-        about.setContentText("A keyboard-driven symbolic calculator in the spirit of Emacs Calc.\n\n"
-                + AppInfo.COPYRIGHT + "\n" + AppInfo.LICENSE + "\n\nSettings: " + settingsStore.file());
+        about.setTitle("About " + AppInfo.NAME);
+        about.setHeaderText(null);
+        about.setGraphic(null);
+        about.getDialogPane().getStyleClass().add("about-dialog");
+        // A Dialog lives in its own scene and does NOT inherit the window's app.css, so the .about-*
+        // rules have to be attached here or they never apply. The theme's -color-* tokens do resolve:
+        // those come from the application-wide user-agent stylesheet.
+        var appCss = CalcWindow.class.getResource("/com/calcula/styles/app.css");
+        if (appCss != null) {
+            about.getDialogPane().getStylesheets().add(appCss.toExternalForm());
+        }
+        about.getDialogPane().setContent(aboutContent());
+        about.getButtonTypes().setAll(new ButtonType("Close", ButtonBar.ButtonData.OK_DONE));
         about.initOwner(
                 sceneRoot.getScene() == null ? null : sceneRoot.getScene().getWindow());
         about.showAndWait();
+    }
+
+    /**
+     * The panel's body, without the dialog around it.
+     *
+     * <p>Separated so a test can render it. The things that go wrong in a panel like this are
+     * alignment, wrapping and a stylesheet that never arrived, and not one of those fails an
+     * assertion — they are visible in a picture and invisible everywhere else.
+     */
+    VBox aboutContent() {
+        Label name = new Label(AppInfo.NAME);
+        name.getStyleClass().add("about-name");
+        Label version = new Label("Version " + AppInfo.VERSION);
+        version.getStyleClass().add("about-version");
+        Label tagline = new Label("A keyboard-driven symbolic calculator in the spirit of Emacs Calc.");
+        tagline.getStyleClass().add("about-tagline");
+        tagline.setWrapText(true);
+        VBox titleBox = new VBox(2, name, version, tagline);
+        titleBox.setAlignment(Pos.CENTER_LEFT);
+
+        HBox header = new HBox(16, titleBox);
+        var iconStream = CalcWindow.class.getResourceAsStream("/com/calcula/icons/calcula-128.png");
+        if (iconStream != null) {
+            ImageView logo = new ImageView(new Image(iconStream));
+            logo.setFitWidth(72);
+            logo.setFitHeight(72);
+            logo.setPreserveRatio(true);
+            header.getChildren().add(0, logo);
+        }
+        header.setAlignment(Pos.TOP_LEFT);
+
+        Label copyright = new Label(AppInfo.COPYRIGHT);
+        copyright.getStyleClass().add("about-copyright");
+
+        VBox links = new VBox(2, new Label(AppInfo.LICENSE), aboutLink(AppInfo.HOMEPAGE, AppInfo.HOMEPAGE));
+        links.getChildren()
+                .add(aboutLink(
+                        "Settings: " + homeCollapsed(settingsStore.file()),
+                        settingsStore.file().toString()));
+
+        String details = environmentDetails();
+        Label environment = new Label(details);
+        environment.getStyleClass().add("about-env");
+
+        // In the content rather than as a button type, so pressing it does not dismiss the panel —
+        // copying and then reopening it to read what was copied would be a strange gesture.
+        Button copyDetails = new Button("Copy details");
+        copyDetails.setOnAction(e -> {
+            ClipboardContent cc = new ClipboardContent();
+            cc.putString(details);
+            Clipboard.getSystemClipboard().setContent(cc);
+            copyDetails.setText("Copied");
+        });
+
+        VBox content = new VBox(14, header, copyright, links, environment, new HBox(copyDetails));
+        content.getStyleClass().add("about-content");
+        return content;
+    }
+
+    /**
+     * A link row that copies rather than opens.
+     *
+     * <p>This application has no browser to hand a URL to and no editor to open a file in, and wiring
+     * one in for a panel nobody opens twice would be the tail wagging the dog. Copying is the thing
+     * somebody wants anyway: the address goes where they were going to paste it.
+     */
+    private Hyperlink aboutLink(String text, String toCopy) {
+        Hyperlink link = new Hyperlink(text);
+        link.setPadding(Insets.EMPTY);
+        link.setOnAction(e -> {
+            ClipboardContent cc = new ClipboardContent();
+            cc.putString(toCopy);
+            Clipboard.getSystemClipboard().setContent(cc);
+            link.setText(text + "  — copied");
+        });
+        return link;
+    }
+
+    /**
+     * A path with the home directory as {@code ~}.
+     *
+     * <p>For width, not for tidiness. The panel is as wide as its longest line, and an absolute path
+     * under a long home directory is comfortably the longest thing on it — collapsed, the dialog is
+     * the size of the text somebody actually reads. The full path still goes on the clipboard, since
+     * that is the one that can be pasted into a terminal.
+     */
+    static String homeCollapsed(Path path) {
+        if (path == null) {
+            return "";
+        }
+        String home = System.getProperty("user.home", "");
+        String text = path.toString();
+        return !home.isBlank() && text.startsWith(home) ? "~" + text.substring(home.length()) : text;
+    }
+
+    /**
+     * What a bug report needs, and what "Copy details" puts on the clipboard.
+     *
+     * <p>Monospace on screen so the versions line up and a wrong one is visible at a glance.
+     */
+    private String environmentDetails() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(AppInfo.NAME).append(' ').append(AppInfo.VERSION);
+        if (!AppInfo.BUILD_TIME.isBlank()) {
+            sb.append(" (built ").append(AppInfo.BUILD_TIME).append(')');
+        }
+        sb.append('\n');
+        sb.append("Java: ")
+                .append(System.getProperty("java.version", "?"))
+                .append(" (")
+                .append(System.getProperty("java.vendor", "?"))
+                .append(")\n");
+        sb.append("JavaFX: ")
+                .append(System.getProperty("javafx.runtime.version", "?"))
+                .append('\n');
+        sb.append("OS: ")
+                .append(System.getProperty("os.name", "?"))
+                .append(' ')
+                .append(System.getProperty("os.version", "?"))
+                .append(" (")
+                .append(System.getProperty("os.arch", "?"))
+                .append(")\n");
+        sb.append("Config: ").append(homeCollapsed(settingsStore.file().getParent()));
+        return sb.toString();
     }
 
     /**
