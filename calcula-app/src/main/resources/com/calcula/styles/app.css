@@ -269,6 +269,18 @@
  * is for the in-window bar every other platform gets.
  */
 
+/*
+ * The chord sits in a column of its own, in the colour reserved for the
+ * keyboard. Written into the label it lands at a different x on every row,
+ * and finding a key means reading every line instead of scanning one.
+ */
+.menu-item .menu-item-title { -fx-text-fill: -color-fg-default; }
+
+.menu-item .menu-item-chord {
+    -fx-text-fill: -calc-key;
+    -fx-font-size: 11px;
+}
+
 .calc-menu-bar {
     -fx-background-color: -color-bg-subtle;
     -fx-border-color: transparent transparent -color-border-muted transparent;

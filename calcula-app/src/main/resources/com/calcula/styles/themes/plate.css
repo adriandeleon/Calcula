@@ -66,6 +66,9 @@
      * colours, and a series that borrows one makes both unreadable.
      */
     -calc-series-1: #2563a8;
+
+    /* Reserved for the keyboard: a chord, and nothing else, is this colour. */
+    -calc-key: #7078c0;
     -calc-series-2: #0e9488;
     -calc-series-3: #8b45d6;
     -calc-series-4: #c4356b;

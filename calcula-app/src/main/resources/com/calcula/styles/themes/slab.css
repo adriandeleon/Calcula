@@ -45,6 +45,9 @@
 
     /* Stepped for the dark ground, not brightened from the light set. */
     -calc-series-1: #4a90e2;
+
+    /* Reserved for the keyboard: a chord, and nothing else, is this colour. */
+    -calc-key: #7078c0;
     -calc-series-2: #12a894;
     -calc-series-3: #9a6fe0;
     -calc-series-4: #e05a80;
