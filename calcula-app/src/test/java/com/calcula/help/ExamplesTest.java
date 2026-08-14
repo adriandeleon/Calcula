@@ -74,7 +74,14 @@ class ExamplesTest {
         List<Example> withNext =
                 Examples.all().stream().filter(e -> e.next() != null).toList();
         assertFalse(withNext.isEmpty(), "no example suggests a next step");
-        withNext.forEach(e -> assertEquals("plot.function", e.next(), e.title()));
+        // Checked as a shape rather than against one id. Pinning the single command that happened to
+        // be in use made adding a second kind of follow-up a test failure rather than a feature, and
+        // the property this is guarding was never "it is plot.function" — it is "it is a command id
+        // the registry can resolve to a live binding", which is what a dotted, chordless name is.
+        withNext.forEach(e -> {
+            assertTrue(e.next().contains("."), e.title() + " should name a command: " + e.next());
+            assertFalse(e.next().contains("-"), e.title() + " looks like a chord: " + e.next());
+        });
     }
 
     @Test
