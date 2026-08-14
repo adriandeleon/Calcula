@@ -146,4 +146,10 @@ class CommandGroupsAndSearchTest {
         assertEquals("Units", CommandGroups.menuFor("unit.convert"));
         assertEquals("Units", CommandGroups.menuFor("unit.base"));
     }
+
+    @Test
+    void statisticsCommandsAreInTheirOwnMenu() {
+        assertEquals("Statistics", CommandGroups.menuFor("stat.mean"));
+        assertEquals("Statistics", CommandGroups.menuFor("stat.fitLine"));
+    }
 }
