@@ -512,7 +512,7 @@ public final class CalcWindow {
 
         trailPane = new VBox(buildTrailBar(), trailView);
         VBox.setVgrow(trailView, Priority.ALWAYS);
-        split = new SplitPane(trailPane, stackView);
+        split = new SplitPane(stackView, trailPane);
         SplitPane.setResizableWithParent(trailPane, Boolean.FALSE);
         applyTrailLayout();
 
@@ -3779,10 +3779,10 @@ public final class CalcWindow {
         settingDivider = true;
         if (settings.trailShown()) {
             if (!split.getItems().contains(trailPane)) {
-                split.getItems().setAll(trailPane, stackView);
+                split.getItems().setAll(stackView, trailPane);
             }
             Platform.runLater(() -> {
-                split.setDividerPositions(settings.trailSplit());
+                split.setDividerPositions(dividerFor(settings.trailSplit()));
                 settingDivider = false;
                 watchDivider();
             });
@@ -3790,6 +3790,36 @@ public final class CalcWindow {
             split.getItems().setAll(stackView);
             settingDivider = false;
         }
+    }
+
+    /**
+     * The divider that leaves the trail its share of the window.
+     *
+     * <p>The setting is the trail's share, not the divider's position, and the two were the same
+     * number only while the trail was the left-hand pane. On the right the divider is what is left
+     * over, so a saved 0.28 sets it to 0.72 — and read back the other way, or a remembered quarter
+     * reopens as three quarters.
+     *
+     * <p>Named in both directions rather than written as {@code 1 - x} at the two call sites, because
+     * an inversion spelled out once is a decision and the same arithmetic in two places is a thing
+     * somebody eventually simplifies away on one side.
+     */
+    private static double dividerFor(double trailShare) {
+        return 1 - trailShare;
+    }
+
+    private static double trailShareOf(double dividerPosition) {
+        return 1 - dividerPosition;
+    }
+
+    /** Visible for tests: the pane the trail lives in. */
+    Region trailPaneForTest() {
+        return trailPane;
+    }
+
+    /** Visible for tests: the split holding the stack and the trail. */
+    SplitPane splitForTest() {
+        return split;
     }
 
     /** Remember where the divider is dragged to, on the same debounce the sizes use. */
@@ -3800,7 +3830,7 @@ public final class CalcWindow {
         dividerWatched = true;
         split.getDividers().get(0).positionProperty().addListener((o, was, now) -> {
             if (!settingDivider && settings.trailShown()) {
-                saveLater(settings.withTrailSplit(now.doubleValue()));
+                saveLater(settings.withTrailSplit(trailShareOf(now.doubleValue())));
             }
         });
     }

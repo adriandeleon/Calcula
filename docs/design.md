@@ -247,7 +247,7 @@ agree character for character.
 
 | Region | Face & size | Metrics | Behaviour |
 |---|---|---|---|
-| **Trail** | JetBrains Mono 11 | 1 / 10 padding | Closeable with `C-x 1`, and its width is remembered. Sigil and text in separate boxes, so `=` and `!` keep a column *and* a wrapped line resumes under the text. Scrolls to the tail on every publish. 28 % of the split, not resizable with the parent. |
+| **Trail** | JetBrains Mono 11 | 1 / 10 padding | Closeable with `C-x 1`, and its width is remembered. Sigil and text in separate boxes, so `=` and `!` keep a column *and* a wrapped line resumes under the text. Scrolls to the tail on every publish. 28 % of the split, on the right of the stack, not resizable with the parent. |
 | **Stack** | `MathLayout`, 17 pt | 3 px rail + 8 px gap, 38 px index, 10 px gap, decimal in the right margin | Bottom-aligned, so entry `1:` sits against the echo area. Two nested boxes: the rail fills height, and a formula aligns on its baseline while a *picture* aligns to its top — a chart has no baseline, and a block is labelled at its top. Renumbers whole-list on any change. |
 | **Mode line** | Inter 11 | 4 / 12 padding, hairline on top | At the bottom edge of the frame. Modes left, CAS right. An *off* flag is omitted, not greyed — Calc's own convention, and it keeps the strip short. |
 | **Echo area** | JetBrains Mono 14 | 8 / 12 / 10 padding | No border, no focus ring, transparent ground: a line of the page, not a widget on it. Carries transient notes at its right-hand end — what the *interface* just did, as against what happened to the mathematics. |
