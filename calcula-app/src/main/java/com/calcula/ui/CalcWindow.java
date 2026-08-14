@@ -91,6 +91,7 @@ import com.calcula.ui.math.MathLayout;
 import com.calcula.ui.math.MathStyle;
 import com.calcula.ui.plot.PlotCanvas;
 import com.calcula.ui.plot.SurfaceCanvas;
+import com.calcula.units.Units;
 
 /**
  * The main window: trail on the left, stack in the centre, mode line and echo area along the bottom.
@@ -642,6 +643,12 @@ public final class CalcWindow {
         registry.register("stack.swap", "Swap", "Exchange the top two values", () -> machineOp(new Op.Swap()));
         registry.register("stack.roll", "Roll", "Rotate the top three values", () -> machineOp(new Op.Roll(3)));
         registry.register("stack.clear", "Clear", "Empty the stack", () -> machineOp(new Op.Clear()));
+        registry.register(
+                "unit.convert",
+                "Convert To…",
+                "Convert the top value to the unit typed on the input line",
+                this::convertUnits);
+        registry.register("unit.base", "To Base Units", "Reduce the top value to base units", this::toBaseUnits);
         registry.register("view.trail", "Trail", "Show or hide the trail column", this::toggleTrail);
         registry.register(
                 "view.approximations",
@@ -1631,6 +1638,56 @@ public final class CalcWindow {
      * starts a name as far as the lexer is concerned, and a constant, since binding {@code Pi} would
      * have {@code =} quietly rewrite it everywhere it appears.
      */
+    /**
+     * Convert the top of the stack to the unit typed on the input line.
+     *
+     * <p>Calc prompts in the echo area for the unit; this is the same minibuffer gesture the store
+     * commands use — type it, press the key — because there is already one place in this window where
+     * a command asks for a word, and a second one would be a second thing to learn.
+     */
+    private void convertUnits() {
+        String unit = unitNameOnInputLine();
+        if (unit == null) {
+            return; // it has already said why
+        }
+        input.clear();
+        onMachine(m -> m.applyAll(List.of(new Op.Push(Exprs.sym(unit)), new Op.Apply(UNIT_CONVERT, 2))));
+    }
+
+    /**
+     * Reduce the top of the stack to base units.
+     *
+     * <p>The engine's own answer to a one-argument convert, so what counts as base is its opinion and
+     * not a table here that could disagree with the arithmetic.
+     */
+    private void toBaseUnits() {
+        machineOp(new Op.Apply(UNIT_CONVERT, 1));
+    }
+
+    /** The engine's head, and ours: the adapter sends the second argument across as a string. */
+    private static final String UNIT_CONVERT = "UnitConvert";
+
+    /**
+     * A unit name typed on the input line, or null with the reason already said.
+     *
+     * <p>Checked against the same closed list the parser reads, so {@code 3 m} and a conversion to
+     * {@code m} agree about what a unit is. A name the engine knows and this does not is refused
+     * rather than passed through, because passing it through would convert successfully sometimes and
+     * silently do nothing the rest of the time.
+     */
+    private String unitNameOnInputLine() {
+        String typed = input.getText().trim();
+        if (typed.isEmpty()) {
+            onMachine(m -> m.recordError("type a unit on the input line, then press the key"));
+            return null;
+        }
+        if (!Units.isUnit(typed)) {
+            onMachine(m -> m.recordError("\"" + typed + "\" is not a unit this can convert to"));
+            return null;
+        }
+        return typed;
+    }
+
     private String variableNameOnInputLine() {
         String typed = input.getText().trim();
         if (typed.isEmpty()) {

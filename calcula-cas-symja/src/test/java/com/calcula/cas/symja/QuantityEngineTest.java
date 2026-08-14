@@ -63,4 +63,24 @@ class QuantityEngineTest {
         assertEquals("3 m", eval("3 m"));
         assertEquals("6 m", eval("2 * (3 m)"));
     }
+
+    /**
+     * Converting is the engine's {@code UnitConvert}, reached with the unit as a symbol.
+     *
+     * <p>The same adapter rule as {@code Quantity}: the second argument goes across as a string, so
+     * this only works because that translation covers both heads. Asserted through the pipeline rather
+     * than by inspecting the call, because the call being right and the answer being wrong is exactly
+     * what happened before the string.
+     */
+    @Test
+    void convertingReachesTheEngine() throws CasException {
+        assertEquals("1143/1250 m", eval("UnitConvert(3 ft, m)"));
+        assertEquals("781250/12573 mi", eval("UnitConvert(100 km, mi)"));
+    }
+
+    /** One argument is the engine's own idea of base units, which is the only idea in play. */
+    @Test
+    void oneArgumentReducesToBaseUnits() throws CasException {
+        assertEquals("1143/1250 m", eval("UnitConvert(3 ft)"));
+    }
 }

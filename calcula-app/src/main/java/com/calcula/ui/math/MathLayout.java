@@ -81,6 +81,9 @@ public final class MathLayout {
     /** U+00B1. Typed as +/-, and there is no key for it. */
     private static final String PLUS_MINUS = "±";
 
+    /** U+2009. A unit sits closer to its number than a word would. */
+    private static final String THIN_SPACE = "\u2009";
+
     /** Two dots, set with the spacing of a binary operator. */
     private static final String RANGE = "..";
 
@@ -283,6 +286,19 @@ public final class MathLayout {
                                 style,
                                 FenceNode.Kind.BRACKET)
                         : function(c, style, path);
+            // The value laid out properly and the unit set upright beside it. Upright because that is
+            // what a unit is typographically — an italic m is a variable, an upright m is metres, and
+            // the distinction is the whole convention. Rendered through the number path for exactly
+            // that reason, rather than through symbol(), which italicises.
+            case "Quantity" -> {
+                if (c.arity() == 2 && c.arg(0) instanceof Expr.Num && c.arg(1) instanceof Sym unit) {
+                    yield row(
+                            style,
+                            item(c.arg(0), style, at(path, 0)),
+                            new Item(number(THIN_SPACE + unit.name(), style), Atom.ORD));
+                }
+                yield function(c, style, path);
+            }
             // Set as it is typed, unlike +/- against ±: the markers ARE the mathematical notation
             // here, and there is no second glyph to reach for.
             case "HMS" -> {
