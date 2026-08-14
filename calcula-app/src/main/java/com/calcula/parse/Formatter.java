@@ -50,16 +50,20 @@ import com.calcula.units.Units;
 public final class Formatter {
 
     private static final int PREC_RULE = 1;
-    private static final int PREC_RELATION = 2;
+
+    /** Tighter than the arrow: a :> b /; c is a rule whose replacement carries the condition. */
+    private static final int PREC_CONDITION = 2;
+
+    private static final int PREC_RELATION = 3;
 
     /** Between a comparison and a sum, which is exactly where the parser puts it. */
-    private static final int PREC_ERROR = 3;
+    private static final int PREC_ERROR = 4;
 
-    private static final int PREC_ADDITIVE = 4;
-    private static final int PREC_MULTIPLICATIVE = 5;
-    private static final int PREC_UNARY = 6;
-    private static final int PREC_POWER = 7;
-    private static final int PREC_POSTFIX = 8;
+    private static final int PREC_ADDITIVE = 5;
+    private static final int PREC_MULTIPLICATIVE = 6;
+    private static final int PREC_UNARY = 7;
+    private static final int PREC_POWER = 8;
+    private static final int PREC_POSTFIX = 9;
     private static final int PREC_ATOM = 100;
 
     private Formatter() {}
@@ -195,7 +199,8 @@ public final class Formatter {
         String infix = infixOperator(c.head());
         if (infix != null && c.arity() == 2) {
             int prec = precedence(c.head());
-            boolean rightAssociative = "Power".equals(c.head()) || "Rule".equals(c.head());
+            boolean rightAssociative =
+                    "Power".equals(c.head()) || "Rule".equals(c.head()) || "RuleDelayed".equals(c.head());
             String left = write(c.arg(0), prec, rightAssociative);
             String right = write(c.arg(1), prec, !rightAssociative);
             // Tight for the multiplicative operators and the power, spaced for sums and relations:
@@ -282,6 +287,8 @@ public final class Formatter {
             case "GreaterEqual" -> ">=";
             case "Unequal" -> "!=";
             case "Rule" -> "->";
+            case "RuleDelayed" -> ":>";
+            case "Condition" -> "/;";
             default -> null;
         };
     }
@@ -303,7 +310,8 @@ public final class Formatter {
 
     private static int precedence(String head) {
         return switch (head) {
-            case "Rule" -> PREC_RULE;
+            case "Rule", "RuleDelayed" -> PREC_RULE;
+            case "Condition" -> PREC_CONDITION;
             case "Equal", "Less", "Greater", "LessEqual", "GreaterEqual", "Unequal" -> PREC_RELATION;
             case "PlusMinus", "Interval", "Modulo" -> PREC_ERROR;
             case "Quantity" -> PREC_MULTIPLICATIVE;

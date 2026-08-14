@@ -73,7 +73,11 @@ public final class MathLayout {
             "LessEqual", "≤",
             "GreaterEqual", "≥",
             "Unequal", "≠",
-            "Rule", "→");
+            "Rule", "→",
+            // Set as typed. A delayed rule has a glyph in Mathematica and no font here is sure to
+            // carry it, and a missing glyph is a box — worse than the notation people type.
+            "RuleDelayed", ":→",
+            "Condition", "/;");
 
     /** U+2212, the real minus sign — not a hyphen, which is shorter and sits at the wrong height. */
     private static final String MINUS = "−";

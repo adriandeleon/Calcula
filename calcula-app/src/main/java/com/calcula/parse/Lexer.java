@@ -160,7 +160,11 @@ final class Lexer {
                             || two.equals(">=")
                             || two.equals("!=")
                             || two.equals("==")
-                            || two.equals("->")) {
+                            || two.equals("->")
+                            // Both before the single-character pass, which would otherwise take the
+                            // `/` of `/;` as a division and leave a semicolon nothing can use.
+                            || two.equals(":>")
+                            || two.equals("/;")) {
                         i += 2;
                         return new Token(Kind.OP, two, start);
                     }

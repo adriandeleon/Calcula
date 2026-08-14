@@ -450,8 +450,10 @@ The rule is read rather than evaluated, and it has to be: `x -> 3` handed to an 
 question about what `x` is. A line that is not a rule is refused before the engine is asked, because
 from there a rule that matched nothing and a thing that was never a rule are the same answer.
 
-Not yet: `:>` and `/;`, so a conditional rule has to be written in function form —
-`RuleDelayed(n_, Condition(n^2, n > 2))` — which works, because an unrecognised head passes through.
+`:>` is a delayed rule and `/;` a condition, so `n_ :> n^2 /; n > 2` is written the way it is
+written everywhere else. The condition binds tighter than the arrow — `a :> b /; c` is a rule whose
+replacement carries the condition, not a rule that exists conditionally, which is not a thing anyone
+means. The function forms still work, because an unrecognised head passes through.
 
 ### Working the stack
 
