@@ -162,6 +162,23 @@ public final class CalcWindow {
      */
     private static final double STACK_SURFACE_HEIGHT = 300;
 
+    /** Small enough to still be a picture, and no smaller. */
+    private static final double MIN_PLOT_HEIGHT = 120;
+
+    /**
+     * Tall enough to study, and not so tall the stack disappears behind it.
+     *
+     * <p>The window can be resized past this; the cap is on how much of a scrolling list of values one
+     * of them may take, which is a different question from how big the screen is.
+     */
+    private static final double MAX_PLOT_HEIGHT = 900;
+
+    /** What one press of taller or shorter is worth. */
+    private static final double PLOT_HEIGHT_STEP = 40;
+
+    /** The grab area at the foot of a picture. Thin, because it is dead space on every plot. */
+    private static final double PLOT_GRIP_HEIGHT = 7;
+
     /**
      * Space between the stack's gutter rail and the entry number.
      *
@@ -430,6 +447,19 @@ public final class CalcWindow {
      * recycle, and re-sampling would put 3,600 evaluations behind every scroll of the stack. Sampling
      * belongs to the value, and the value does not change.
      */
+    /**
+     * How tall each picture has been dragged to be.
+     *
+     * <p>Keyed by the value rather than held on the cell, for the same reason the analyses and the
+     * grids are: a stack row is recycled as it scrolls, so anything stored on the cell belongs to
+     * whatever value lands in it next. A height on the cell would make a plot inherit the size of
+     * whichever plot was last scrolled through that row.
+     *
+     * <p>Session-only. The height is how somebody is looking at a value right now, not part of it —
+     * saving it into the sheet would make two files holding the same mathematics unequal.
+     */
+    private final java.util.Map<Expr, Double> plotHeights = new java.util.concurrent.ConcurrentHashMap<>();
+
     private final java.util.Map<Expr, SurfaceSampler.Grid> surfaceGrids =
             new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -654,6 +684,15 @@ public final class CalcWindow {
                 "Convert the top value to the unit typed on the input line",
                 this::convertUnits);
         registry.register("unit.base", "To Base Units", "Reduce the top value to base units", this::toBaseUnits);
+        registry.register(
+                "plot.taller", "Taller", "Make the picture on top taller", () -> resizeTopPlot(PLOT_HEIGHT_STEP));
+        registry.register(
+                "plot.shorter", "Shorter", "Make the picture on top shorter", () -> resizeTopPlot(-PLOT_HEIGHT_STEP));
+        registry.register(
+                "plot.resetSize",
+                "Reset Size",
+                "Put the picture on top back to its default height",
+                () -> resizeTopPlot(0));
         registry.register("stat.mean", "Mean", "The average of the list on top", () -> statistic("Mean"));
         registry.register("stat.median", "Median", "The middle value of the list on top", () -> statistic("Median"));
         registry.register(
@@ -2115,6 +2154,106 @@ public final class CalcWindow {
         return canvas;
     }
 
+    /** The height this picture has been given, or the default for its kind. */
+    private double plotHeight(Expr value, double fallback) {
+        return plotHeights.getOrDefault(value, fallback);
+    }
+
+    /**
+     * A picture with a grip along its foot.
+     *
+     * <p>The grip is a node of its own rather than a hot zone on the canvas, because the canvas has
+     * already spent the drag: a plot pans on one and a surface turns on one. A margin that quietly
+     * meant something else would break the gesture people use most, in favour of the one they use
+     * once.
+     *
+     * <p>Dragging sets the height on the value, not on the cell, and asks the row to measure itself
+     * again — the list sizes rows from their content, so there is nothing else to tell.
+     */
+    private Region resizable(Region canvas, Expr value, double fallback) {
+        canvas.setPrefHeight(plotHeight(value, fallback));
+
+        Region grip = new Region();
+        grip.getStyleClass().add("plot-grip");
+        grip.setPrefHeight(PLOT_GRIP_HEIGHT);
+        grip.setMinHeight(PLOT_GRIP_HEIGHT);
+        grip.setCursor(javafx.scene.Cursor.V_RESIZE);
+
+        double[] start = new double[2];
+        grip.setOnMousePressed(e -> {
+            start[0] = e.getSceneY();
+            start[1] = canvas.getPrefHeight();
+            e.consume();
+        });
+        grip.setOnMouseDragged(e -> {
+            setPlotHeight(value, start[1] + (e.getSceneY() - start[0]));
+            canvas.setPrefHeight(plotHeight(value, fallback));
+            canvas.requestLayout();
+            e.consume();
+        });
+        // Back to the size it came at, which is quicker than dragging back to it.
+        grip.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                plotHeights.remove(value);
+                canvas.setPrefHeight(fallback);
+                canvas.requestLayout();
+                stackView.refresh();
+                e.consume();
+            }
+        });
+
+        VBox box = new VBox(canvas, grip);
+        box.setFillWidth(true);
+        return box;
+    }
+
+    /** Visible for tests: the wrapped picture, without a stack around it. */
+    Region resizableForTest(Expr value, double fallback) {
+        return resizable(plotFor(value), value, fallback);
+    }
+
+    /** Visible for tests: the stored height, clamped. */
+    void setPlotHeightForTest(Expr value, double height) {
+        setPlotHeight(value, height);
+    }
+
+    /** Visible for tests. */
+    double plotHeightForTest(Expr value, double fallback) {
+        return plotHeight(value, fallback);
+    }
+
+    /** Clamped, because a picture dragged to nothing cannot be dragged back. */
+    private void setPlotHeight(Expr value, double height) {
+        plotHeights.put(value, Math.clamp(height, MIN_PLOT_HEIGHT, MAX_PLOT_HEIGHT));
+    }
+
+    /**
+     * Resize the picture on top of the stack from the keyboard.
+     *
+     * <p>The grip is the obvious gesture and it is a mouse gesture; this is a keyboard-driven
+     * calculator, and a size only a mouse can change is a size half the users cannot change.
+     */
+    private void resizeTopPlot(double delta) {
+        onMachine(m -> {
+            Expr top = m.state().depth() < 1 ? null : m.state().at(1);
+            if (top == null || !isPicture(top)) {
+                m.recordError("the top of the stack is not a picture");
+                return;
+            }
+            double fallback = SurfaceValue.isSurface(top) ? STACK_SURFACE_HEIGHT : STACK_PLOT_HEIGHT;
+            if (delta == 0) {
+                plotHeights.remove(top);
+            } else {
+                setPlotHeight(top, plotHeight(top, fallback) + delta);
+            }
+        });
+        stackView.refresh();
+    }
+
+    private static boolean isPicture(Expr value) {
+        return SurfaceValue.isSurface(value) || PlotValue.isPlot(value) || GraphicsScene.isGraphics(value);
+    }
+
     /**
      * A picture the engine produced, e.g. from typing {@code Plot(sin(x), [x, 0, 6])}.
      *
@@ -2572,11 +2711,11 @@ public final class CalcWindow {
                 Expr reading = ResultShape.reading(value, entry.origin());
 
                 Region content = SurfaceValue.isSurface(value)
-                        ? surfaceFor(value)
+                        ? resizable(surfaceFor(value), value, STACK_SURFACE_HEIGHT)
                         : PlotValue.isPlot(value)
-                                ? plotFor(value)
+                                ? resizable(plotFor(value), value, STACK_PLOT_HEIGHT)
                                 : GraphicsScene.isGraphics(value)
-                                        ? sceneFor(value)
+                                        ? resizable(sceneFor(value), value, STACK_PLOT_HEIGHT)
                                         : reading != null
                                                 ? MathLayout.renderReading(reading, mathStyle())
                                                 : MathLayout.render(value, mathStyle());
