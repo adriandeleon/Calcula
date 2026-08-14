@@ -83,4 +83,31 @@ class QuantityEngineTest {
     void oneArgumentReducesToBaseUnits() throws CasException {
         assertEquals("1143/1250 m", eval("UnitConvert(3 ft)"));
     }
+
+    /**
+     * A compound unit survives being written out and read back — as a quantity, not as text.
+     *
+     * <p>Textual stability is not the property that matters. {@code 3 m / 2 s} printed as
+     * {@code Quantity(3/2, m*s^-1)} used to come back through the parser as an expression,
+     * {@code Times(m, Power(s, -1))}, which the engine then read as an ordinary call over a symbol:
+     * it simplified the algebra to {@code m/s} and handed back something that looked almost right and
+     * was no longer a quantity at all. The next conversion on it would have done nothing, silently.
+     *
+     * <p>So this multiplies the re-fed value by seconds. Only a real quantity cancels.
+     */
+    @Test
+    void aCompoundUnitIsStillAQuantityAfterARoundTrip() throws CasException {
+        String printed = eval("3 m / 2 s");
+        assertEquals("Quantity(3/2, m*s^-1)", printed);
+        assertEquals(printed, eval(printed), "and it is a fixed point");
+        assertEquals("3 m", eval("(" + printed + ") * 2 s"));
+    }
+
+    /** The squared case was already stable, and stays so. */
+    @Test
+    void aSquaredUnitRoundTrips() throws CasException {
+        String printed = eval("3 m * 4 m");
+        assertEquals("Quantity(12, m^2)", printed);
+        assertEquals(printed, eval(printed));
+    }
 }
