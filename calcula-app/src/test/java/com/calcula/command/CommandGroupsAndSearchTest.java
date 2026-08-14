@@ -133,4 +133,17 @@ class CommandGroupsAndSearchTest {
         assertTrue(CommandSearch.isSubsequence("dp", "duplicate"));
         assertFalse(CommandSearch.isSubsequence("pd", "duplicate"), "order has to matter or it matches anything");
     }
+
+    /**
+     * The unit commands reach their own menu.
+     *
+     * <p>A command with no group is not a broken command — it is one that quietly never appears in the
+     * menu bar, and is only findable by someone who already knows it exists. Worth an assertion for
+     * the same reason the others here are.
+     */
+    @Test
+    void unitCommandsAreInTheUnitsMenu() {
+        assertEquals("Units", CommandGroups.menuFor("unit.convert"));
+        assertEquals("Units", CommandGroups.menuFor("unit.base"));
+    }
 }
