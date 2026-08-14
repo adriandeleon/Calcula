@@ -39,6 +39,7 @@ public final class CommandGroups {
             new Group("Mode", "mode."),
             new Group("Plot", "plot."),
             new Group("Units", "unit."),
+            new Group("Statistics", "stat."),
             new Group("Help", "help."));
 
     /**

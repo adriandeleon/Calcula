@@ -649,6 +649,27 @@ public final class CalcWindow {
                 "Convert the top value to the unit typed on the input line",
                 this::convertUnits);
         registry.register("unit.base", "To Base Units", "Reduce the top value to base units", this::toBaseUnits);
+        registry.register("stat.mean", "Mean", "The average of the list on top", () -> statistic("Mean"));
+        registry.register("stat.median", "Median", "The middle value of the list on top", () -> statistic("Median"));
+        registry.register(
+                "stat.deviation",
+                "Standard Deviation",
+                "Spread about the mean of the list on top",
+                () -> statistic("StandardDeviation"));
+        registry.register("stat.variance", "Variance", "The square of the deviation", () -> statistic("Variance"));
+        registry.register("stat.total", "Total", "The sum of the list on top", () -> statistic("Total"));
+        registry.register(
+                "stat.correlation",
+                "Correlation",
+                "How the top two lists move together",
+                () -> statisticOfTwo("Correlation"));
+        registry.register(
+                "stat.covariance",
+                "Covariance",
+                "The unnormalised version of that",
+                () -> statisticOfTwo("Covariance"));
+        registry.register(
+                "stat.fitLine", "Fit A Line", "Least-squares straight line through the points on top", this::fitLine);
         registry.register("view.trail", "Trail", "Show or hide the trail column", this::toggleTrail);
         registry.register(
                 "view.approximations",
@@ -1592,6 +1613,46 @@ public final class CalcWindow {
     }
 
     /** Put the elements of the top list back on the stack. */
+    /**
+     * A statistic of the list on top.
+     *
+     * <p>No arithmetic of its own. Every one of these is a head the engine already has, and the
+     * gesture that was actually missing was building the list — which {@link #packStack} answered. So
+     * each is a name and a menu entry, which is the whole of what was left of the statistics, and the
+     * reason they cost a line each rather than a package.
+     *
+     * <p>Exact, because the engine is: the mean of one to four is 5/2 and its deviation is
+     * {@code Sqrt(5/3)}, not 1.2909944487.
+     */
+    private void statistic(String head) {
+        machineOp(new Op.Apply(head, 1));
+    }
+
+    /** A statistic of the top two lists, which is how correlation and covariance are asked for. */
+    private void statisticOfTwo(String head) {
+        machineOp(new Op.Apply(head, 2));
+    }
+
+    /**
+     * A straight line through the points on top, as a formula.
+     *
+     * <p>The model, the parameters and the variable are pushed rather than asked for. A line is the
+     * fit people want most of the time, and asking for {@code a*x+b} every time is asking them to type
+     * the answer to the question they are asking. A general fit against a typed model is the next
+     * command, not this one.
+     *
+     * <p>One applyAll, so the three pushes and the fit are one undo step rather than four — the same
+     * reason a keeping store is one.
+     */
+    private void fitLine() {
+        Expr model = Exprs.call("Plus", Exprs.call("Times", Exprs.sym("a"), Exprs.sym("x")), Exprs.sym("b"));
+        onMachine(m -> m.applyAll(List.of(
+                new Op.Push(model),
+                new Op.Push(Exprs.list(Exprs.sym("a"), Exprs.sym("b"))),
+                new Op.Push(Exprs.sym("x")),
+                new Op.Apply("FindFit", 4))));
+    }
+
     private void unpackStack() {
         machineOp(new Op.Unpack());
     }
