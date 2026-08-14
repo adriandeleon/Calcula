@@ -73,10 +73,36 @@ public final class Parser {
      * than anything else, so {@code x -> a + b} groups the way it reads.
      */
     private Expr rule() {
+        Expr left = condition();
+        if (peek().kind() == Kind.OP) {
+            // Right-associative, so a -> b -> c is a -> (b -> c): a rule whose replacement is a rule,
+            // which is the only reading that means anything.
+            String arrow = peek().text();
+            if (arrow.equals("->")) {
+                next();
+                return Exprs.call("Rule", left, rule());
+            }
+            if (arrow.equals(":>")) {
+                next();
+                return Exprs.call("RuleDelayed", left, rule());
+            }
+        }
+        return left;
+    }
+
+    /**
+     * {@code b /; c} — a replacement that only applies when the condition holds.
+     *
+     * <p>Tighter than the arrow, so {@code a :> b /; c} is {@code a :> (b /; c)} and not
+     * {@code (a :> b) /; c}. The first is a conditional rule and the second is a rule that exists
+     * conditionally, which is not a thing; getting this the wrong way round would parse every
+     * conditional rule anybody writes into something that quietly never fires.
+     */
+    private Expr condition() {
         Expr left = relational();
-        if (peek().kind() == Kind.OP && peek().text().equals("->")) {
+        if (peek().kind() == Kind.OP && peek().text().equals("/;")) {
             next();
-            return Exprs.call("Rule", left, rule());
+            return Exprs.call("Condition", left, relational());
         }
         return left;
     }
